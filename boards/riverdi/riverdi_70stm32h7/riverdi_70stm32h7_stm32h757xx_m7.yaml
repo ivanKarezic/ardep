@@ -1,0 +1,9 @@
+identifier: riverdi_70stm32h7/stm32h757xx/m7
+name: Riverdi 7-inch STM32H7 Display (Cortex-M7)
+type: mcu
+arch: arm
+ram: 512
+flash: 1024
+supported:
+  - gpio
+  - uart

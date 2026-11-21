@@ -1,0 +1,6 @@
+board:
+  name: riverdi_70stm32h7
+  full_name: Riverdi 7-inch STM32H7 Display (RVT70HSSNWC00-B)
+  vendor: riverdi
+  socs:
+    - name: stm32h757xx

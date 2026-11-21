@@ -1,0 +1,158 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+
+#include <zephyr/dt-bindings/memory-attr/memory-attr-arm.h>
+#include <zephyr/dt-bindings/memory-controller/stm32-fmc-sdram.h>
+#include <zephyr/dt-bindings/display/panel.h>
+#include <zephyr/dt-bindings/pwm/pwm.h>
+#include "flash_layout.dtsi"
+
+/ {
+	chosen {
+		zephyr,display = &ltdc;
+		zephyr,canbus = &fdcan1;
+		zephyr,code-partition = &slot0_partition;
+	};
+
+	charger_io: charger-io {
+		compatible = "riverdi,charger-io";
+		panel-reset-gpios = <&gpioa 6 GPIO_ACTIVE_LOW>;
+		pwms = <&backlight_pwm 1 20833 PWM_POLARITY_NORMAL>;
+		touch-reset-gpios = <&gpiok 5 GPIO_ACTIVE_LOW>;
+		touch-int-gpios = <&gpioi 11 GPIO_ACTIVE_HIGH>;
+	};
+
+	display_sdram: memory@d0000000 {
+		compatible = "zephyr,memory-region", "mmio-sram";
+		device_type = "memory";
+		reg = <0xd0000000 DT_SIZE_M(8)>;
+		zephyr,memory-region = "DISPLAY_SDRAM";
+		zephyr,memory-attr = <DT_MEM_ARM(ATTR_MPU_RAM)>;
+	};
+};
+
+&pll2 {
+	clocks = <&clk_hse>;
+	div-m = <4>;
+	mul-n = <168>;
+	div-r = <3>;
+	status = "okay";
+};
+
+&pll3 {
+	clocks = <&clk_hse>;
+	/* 16 MHz / 8 * 125 / 6 matches the DSI video timing clock. */
+	div-m = <8>;
+	mul-n = <125>;
+	div-r = <6>;
+	status = "okay";
+};
+
+&fmc {
+	clocks = <&rcc STM32_CLOCK(AHB3, 12)>, <&rcc STM32_SRC_PLL2_R FMC_SEL(2)>;
+	pinctrl-0 = <&fmc_nbl0_pe0 &fmc_nbl1_pe1 &fmc_nbl2_pi4 &fmc_nbl3_pi5
+		     &fmc_sdclk_pg8 &fmc_sdnwe_ph5 &fmc_sdcke1_ph7 &fmc_sdne1_ph6
+		     &fmc_sdnras_pf11 &fmc_sdncas_pg15
+		     &fmc_a0_pf0 &fmc_a1_pf1 &fmc_a2_pf2 &fmc_a3_pf3 &fmc_a4_pf4
+		     &fmc_a5_pf5 &fmc_a6_pf12 &fmc_a7_pf13 &fmc_a8_pf14
+		     &fmc_a9_pf15 &fmc_a10_pg0 &fmc_a11_pg1 &fmc_a12_pg2
+		     &fmc_a14_pg4 &fmc_a15_pg5
+		     &fmc_d0_pd14 &fmc_d1_pd15 &fmc_d2_pd0 &fmc_d3_pd1
+		     &fmc_d4_pe7 &fmc_d5_pe8 &fmc_d6_pe9 &fmc_d7_pe10
+		     &fmc_d8_pe11 &fmc_d9_pe12 &fmc_d10_pe13 &fmc_d11_pe14
+		     &fmc_d12_pe15 &fmc_d13_pd8 &fmc_d14_pd9 &fmc_d15_pd10
+		     &fmc_d16_ph8 &fmc_d17_ph9 &fmc_d18_ph10 &fmc_d19_ph11
+		     &fmc_d20_ph12 &fmc_d21_ph13 &fmc_d22_ph14 &fmc_d23_ph15
+		     &fmc_d24_pi0 &fmc_d25_pi1 &fmc_d26_pi2 &fmc_d27_pi3
+		     &fmc_d28_pi6 &fmc_d29_pi7 &fmc_d30_pi9 &fmc_d31_pi10>;
+	pinctrl-names = "default";
+	status = "okay";
+
+	sdram {
+		power-up-delay = <100>;
+		num-auto-refresh = <8>;
+		mode-register = <0x230>;
+		refresh-rate = <0x603>;
+		status = "okay";
+
+		bank@1 {
+			reg = <1>;
+			st,sdram-control = <STM32_FMC_SDRAM_NC_8 STM32_FMC_SDRAM_NR_11
+					    STM32_FMC_SDRAM_MWID_32 STM32_FMC_SDRAM_NB_4
+					    STM32_FMC_SDRAM_CAS_3 STM32_FMC_SDRAM_SDCLK_PERIOD_2
+					    STM32_FMC_SDRAM_RBURST_ENABLE STM32_FMC_SDRAM_RPIPE_0>;
+			st,sdram-timing = <3 7 4 7 4 3 3>;
+		};
+	};
+};
+
+&mipi_dsi {
+	pll-ndiv = <62>;
+	pll-idf = <1>;
+	pll-odf = <1>;
+	de-active-high;
+	bta-ack-disable;
+	largest-packet-size = <23>;
+	host-timeouts = <1 0 0 0 0 0 0 0 0>;
+	phy-timings = <28 32 15 24 0 0>;
+	lp-rx-filter = <10000>;
+	status = "okay";
+
+	panel@0 {
+		compatible = "riverdi,rvt70-panel";
+		reg = <0>;
+		data-lanes = <2>;
+		pixel-format = <MIPI_DSI_PIXFMT_RGB888>;
+	};
+};
+
+&ltdc {
+	clocks = <&rcc STM32_CLOCK(APB3, 3)>, <&rcc STM32_SRC_PLL3_R NO_SEL>;
+	width = <1024>;
+	height = <600>;
+	pixel-format = <PANEL_PIXEL_FORMAT_RGB_888>;
+	ext-sdram = <&display_sdram>;
+	def-back-color-red = <0>;
+	def-back-color-green = <0>;
+	def-back-color-blue = <0>;
+	status = "okay";
+
+	display-timings {
+		compatible = "zephyr,panel-timing";
+		hsync-active = <0>;
+		vsync-active = <0>;
+		de-active = <0>;
+		pixelclk-active = <0>;
+		hsync-len = <70>;
+		vsync-len = <10>;
+		hback-porch = <160>;
+		hfront-porch = <160>;
+		vback-porch = <23>;
+		vfront-porch = <12>;
+	};
+};
+
+&timers15 {
+	st,prescaler = <4>;
+	status = "okay";
+
+	backlight_pwm: pwm {
+		pinctrl-0 = <&tim15_ch1_pe5>;
+		pinctrl-names = "default";
+		status = "okay";
+	};
+};
+
+&i2c1 {
+	pinctrl-0 = <&i2c1_scl_pb6 &i2c1_sda_pb7>;
+	pinctrl-names = "default";
+	clock-frequency = <I2C_BITRATE_STANDARD>;
+	status = "okay";
+};
+
+&fdcan1 {
+	clocks = <&rcc STM32_CLOCK(APB1_2, 8)>, <&rcc STM32_SRC_PLL1_Q FDCAN_SEL(1)>;
+	pinctrl-0 = <&fdcan1_rx_pa11 &fdcan1_tx_pb9>;
+	pinctrl-names = "default";
+	bitrate = <500000>;
+	status = "okay";
+};

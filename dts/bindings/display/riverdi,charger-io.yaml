@@ -1,0 +1,16 @@
+description: Riverdi display and touch control lines
+compatible: "riverdi,charger-io"
+include: base.yaml
+properties:
+  panel-reset-gpios:
+    type: phandle-array
+    required: true
+  pwms:
+    type: phandle-array
+    required: true
+  touch-reset-gpios:
+    type: phandle-array
+    required: true
+  touch-int-gpios:
+    type: phandle-array
+    required: true

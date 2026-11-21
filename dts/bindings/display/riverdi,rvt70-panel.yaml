@@ -1,0 +1,3 @@
+description: Riverdi RVT70 MIPI DSI panel
+compatible: "riverdi,rvt70-panel"
+include: mipi-dsi-device.yaml
