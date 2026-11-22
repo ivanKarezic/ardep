@@ -37,7 +37,7 @@ open when powering the Riverdi separately. Use a correctly terminated bench
 bus. The Riverdi uses classic
 CAN at 500 kbit/s and 11-bit ISO-TP addressing (request `0x7E0`, response
 `0x7E8`). The Electron console lives in the separate
-`riverdi-charger-console` repository. Follow its README to set up the app
+`slhx-charger-tool` repository. Follow its README to set up the app
 and the PEAK PCAN, Vector XL, or SocketCAN backend.
 [Riverdi datasheet](https://download.riverdi.com/Archive/RVT70HSSNWC00-B/DS_RVT70HSSNWC00-B_Rev.1.2.pdf)
 
