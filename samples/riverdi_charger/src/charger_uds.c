@@ -18,6 +18,8 @@
 #define DID_BATTERY 0xf200
 #define DID_PROFILE 0xf201
 #define DID_TRUCK 0xf202
+#define DID_INDICATORS 0xf203
+#define DID_CHARGE 0xf204
 #define DID_VERSION 0xf189
 #define BATTERY_WIRE_SIZE 12
 
@@ -26,6 +28,8 @@ static struct iso14229_zephyr_instance uds;
 static struct battery_sample battery = {640, 520, 0, 250, 0, 0};
 static int64_t last_update = -1;
 static atomic_t selected_truck;
+static atomic_t indicators;
+static atomic_t charge_state;
 K_MUTEX_DEFINE(battery_lock);
 
 bool charger_uds_sample(struct battery_sample *sample)
@@ -40,6 +44,41 @@ bool charger_uds_sample(struct battery_sample *sample)
 enum charger_truck charger_uds_truck(void)
 {
 	return atomic_get(&selected_truck);
+}
+
+uint8_t charger_uds_indicators(void)
+{
+	return atomic_get(&indicators);
+}
+
+enum charger_charge_state charger_charge_state(void)
+{
+	return atomic_get(&charge_state);
+}
+
+int charger_set_charging(bool enable)
+{
+	int ret = 0;
+
+	k_mutex_lock(&battery_lock, K_FOREVER);
+	if (enable) {
+		if (!charger_uds_truck() || charger_charge_state() == COMPLETE) {
+			ret = -EPERM;
+		} else {
+			atomic_set(&charge_state, CHARGING);
+		}
+	} else {
+		atomic_cas(&charge_state, CHARGING, PAUSED);
+	}
+	k_mutex_unlock(&battery_lock);
+	return ret;
+}
+
+void charger_reset_charge(void)
+{
+	k_mutex_lock(&battery_lock, K_FOREVER);
+	atomic_set(&charge_state, READY);
+	k_mutex_unlock(&battery_lock);
 }
 
 static UDSErr_t read_did(UDSServer_t *srv, UDSRDBIArgs_t *args)
@@ -64,6 +103,12 @@ static UDSErr_t read_did(UDSServer_t *srv, UDSRDBIArgs_t *args)
 	case DID_TRUCK:
 		wire[0] = charger_uds_truck();
 		return args->copy(srv, wire, 1);
+	case DID_INDICATORS:
+		wire[0] = charger_uds_indicators();
+		return args->copy(srv, wire, 1);
+	case DID_CHARGE:
+		wire[0] = charger_charge_state();
+		return args->copy(srv, wire, 1);
 	case DID_BATTERY:
 		charger_uds_sample(&sample);
 		sys_put_be16(sample.soc_permille, wire);
@@ -80,6 +125,32 @@ static UDSErr_t read_did(UDSServer_t *srv, UDSRDBIArgs_t *args)
 
 static UDSErr_t write_did(const UDSWDBIArgs_t *args)
 {
+	if (args->dataId == DID_CHARGE) {
+		if (args->len != 1) {
+			return UDS_NRC_IncorrectMessageLengthOrInvalidFormat;
+		}
+		if (args->data[0] > 1) {
+			return UDS_NRC_RequestOutOfRange;
+		}
+		return charger_set_charging(args->data[0]) ? UDS_NRC_ConditionsNotCorrect :
+			UDS_PositiveResponse;
+	}
+	if (args->dataId == DID_INDICATORS) {
+		if (args->len != 2) {
+			return UDS_NRC_IncorrectMessageLengthOrInvalidFormat;
+		}
+		const uint8_t mask = args->data[0];
+		const uint8_t value = args->data[1];
+		atomic_val_t previous;
+
+		if (!mask || (mask & ~(CHARGER_POWER_STAGE | CHARGER_PM_ENABLE)) || (value & ~mask)) {
+			return UDS_NRC_RequestOutOfRange;
+		}
+		do {
+			previous = atomic_get(&indicators);
+		} while (!atomic_cas(&indicators, previous, (previous & ~mask) | value));
+		return UDS_PositiveResponse;
+	}
 	if (args->dataId == DID_TRUCK) {
 		if (args->len != 1) {
 			return UDS_NRC_IncorrectMessageLengthOrInvalidFormat;
@@ -87,7 +158,12 @@ static UDSErr_t write_did(const UDSWDBIArgs_t *args)
 		if (args->data[0] >= CHARGER_TRUCK_COUNT) {
 			return UDS_NRC_RequestOutOfRange;
 		}
-		atomic_set(&selected_truck, args->data[0]);
+		k_mutex_lock(&battery_lock, K_FOREVER);
+		if (atomic_set(&selected_truck, args->data[0]) != args->data[0]) {
+			atomic_set(&charge_state, READY);
+			last_update = -1;
+		}
+		k_mutex_unlock(&battery_lock);
 		return UDS_PositiveResponse;
 	}
 	if (args->dataId != DID_BATTERY) {
@@ -114,6 +190,11 @@ static UDSErr_t write_did(const UDSWDBIArgs_t *args)
 	k_mutex_lock(&battery_lock, K_FOREVER);
 	battery = sample;
 	last_update = k_uptime_get();
+	if (sample.soc_permille == 1000) {
+		atomic_cas(&charge_state, CHARGING, COMPLETE);
+	} else {
+		atomic_cas(&charge_state, COMPLETE, READY);
+	}
 	k_mutex_unlock(&battery_lock);
 	return UDS_PositiveResponse;
 }

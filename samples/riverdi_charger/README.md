@@ -1,7 +1,8 @@
 # SLHx Advanced Charger
 
-The LVGL dashboard shows a simulated 48 V battery charging session. Use
-**Start charge**, **Pause charge**, **Resume charge**, or **Reset demo**.
+The LVGL dashboard shows battery data received over UDS. Use **Start
+charge**, **Pause charge**, **Resume charge**, or **Reset** to control the
+bench session. The desktop truck simulator supplies SoC.
 The demo starts at 64% and advances by one percentage point every 1.5 seconds
 while charging. The voltage, current, and time remaining are simulated.
 The prototype does not send charger commands.
@@ -54,6 +55,8 @@ values only.
 | F201 | Read | ASCII `RVC1` followed by one byte. 0 means telemetry only and 1 means firmware update support. |
 | F189 | Read | ASCII charger firmware version. |
 | F202 | Read and write | One byte. 0 disconnects, 1 selects EJC 216, 2 EFG 216, 3 ETV 216i, 4 EFG 425, and 5 Custom. |
+| F203 | Read and write | Read one byte of simulated indicator states. Bit 0 is Power stage and bit 1 is PM Enable. Write two bytes, a change mask and new values for the masked bits. Both LEDs start off after reset. |
+| F204 | Read and write | Read one byte (0 ready, 1 charging, 2 paused, 3 complete). Write 1 to start or resume, 0 to pause. The target rejects Start without a selected truck and ends the session when the truck changes or disconnects. |
 
 The dashboard shows the simulated truck selected in Charger Tool. Incoming
 warning and error bits open an overlay. Acknowledge it by touch or open

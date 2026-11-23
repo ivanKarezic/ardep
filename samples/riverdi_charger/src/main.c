@@ -21,9 +21,11 @@
 #define LINE 0xdce1e5
 #define YELLOW 0xffc800
 #define RED 0xb3261e
+#define LED_OFF 0xa7b0b9
+#define LED_ON 0x00884a
 
 enum telemetry_source {
-	LOCAL_DEMO,
+	CAN_WAITING,
 	CAN_LIVE,
 	CAN_STALE,
 };
@@ -44,32 +46,25 @@ static const lv_image_dsc_t logo = {
 	.data = logo_pixels,
 };
 
-enum charge_state {
-	READY,
-	CHARGING,
-	PAUSED,
-	COMPLETE,
-};
-
 static struct {
-	enum charge_state state;
 	enum telemetry_source source;
-	unsigned int percent;
 	struct battery_sample sample;
 	lv_obj_t *status;
 	lv_obj_t *source_label;
+	lv_obj_t *percent_title;
 	lv_obj_t *percent_text;
 	lv_obj_t *progress;
 	lv_obj_t *voltage;
 	lv_obj_t *current;
 	lv_obj_t *remaining;
-	lv_obj_t *remaining_title;
 	lv_obj_t *action;
 	lv_obj_t *dashboard;
 	lv_obj_t *truck;
 	lv_obj_t *truck_name;
 	lv_obj_t *truck_caption;
-} charger = { .percent = 64 };
+	lv_obj_t *power_stage;
+	lv_obj_t *pm_enable;
+} charger;
 
 static struct {
 	uint16_t warnings;
@@ -145,59 +140,60 @@ static void update_display(void)
 		[READY] = "Start charge", [CHARGING] = "Pause charge",
 		[PAUSED] = "Resume charge", [COMPLETE] = "New session",
 	};
-	const bool charging = charger.state == CHARGING;
-	const unsigned int voltage_tenths = 480 + charger.percent * 64 / 100;
+	const enum charger_charge_state state = charger_charge_state();
+	const bool truck_connected = charger_uds_truck() != CHARGER_TRUCK_NONE;
+	const bool show_sample = truck_connected && charger.source != CAN_WAITING;
 	const struct battery_sample *sample = &charger.sample;
 
-	lv_label_set_text(charger.status, status[charger.state]);
-	lv_label_set_text(charger.action, action[charger.state]);
-	if (charger.source != LOCAL_DEMO) {
+	lv_label_set_text(charger.status, truck_connected ? status[state] : "Connect a truck");
+	lv_label_set_text(charger.action, action[state]);
+	lv_obj_set_y(charger.status, show_sample ? 172 : 104);
+	lv_obj_set_flag(charger.percent_title, LV_OBJ_FLAG_HIDDEN, !show_sample);
+	lv_obj_set_flag(charger.percent_text, LV_OBJ_FLAG_HIDDEN, !show_sample);
+	lv_obj_set_flag(charger.progress, LV_OBJ_FLAG_HIDDEN, !show_sample);
+	if (truck_connected) {
+		lv_obj_remove_state(lv_obj_get_parent(charger.action), LV_STATE_DISABLED);
+	} else {
+		lv_obj_add_state(lv_obj_get_parent(charger.action), LV_STATE_DISABLED);
+	}
+	if (show_sample) {
 		if (sample->faults || sample->warnings) {
 			lv_label_set_text(charger.status, sample->faults ? "Battery error" :
 					  "Battery warning");
 		}
 		lv_label_set_text(charger.source_label,
 				  charger.source == CAN_LIVE ? "CAN telemetry live" : "CAN telemetry stale");
-		lv_label_set_text_fmt(charger.percent_text, "%u%%", sample->soc_permille / 10);
-		lv_bar_set_value(charger.progress, sample->soc_permille / 10, LV_ANIM_OFF);
+		lv_label_set_text_fmt(charger.percent_text, "%u.%u%%", sample->soc_permille / 10,
+				      sample->soc_permille % 10);
+		lv_bar_set_value(charger.progress, sample->soc_permille, LV_ANIM_OFF);
 		lv_label_set_text_fmt(charger.voltage, "%u.%u V",
 				      sample->voltage_decivolts / 10, sample->voltage_decivolts % 10);
 		lv_label_set_text_fmt(charger.current, "%s%d.%d A", sample->current_deciamps < 0 ? "-" : "",
 				      abs(sample->current_deciamps) / 10, abs(sample->current_deciamps) % 10);
-		lv_label_set_text(charger.remaining_title, "Battery temperature");
 		lv_label_set_text_fmt(charger.remaining, "%s%d.%d C",
 				      sample->temperature_decicelsius < 0 ? "-" : "",
 				      abs(sample->temperature_decicelsius) / 10,
 				      abs(sample->temperature_decicelsius) % 10);
 		return;
 	}
-	lv_label_set_text(charger.source_label, "Local demonstration");
-	lv_label_set_text(charger.remaining_title, "Estimated time");
-	lv_label_set_text_fmt(charger.percent_text, "%u%%", charger.percent);
-	lv_bar_set_value(charger.progress, charger.percent, LV_ANIM_OFF);
-	lv_label_set_text_fmt(charger.voltage, "%u.%u V",
-			      voltage_tenths / 10, voltage_tenths % 10);
-	lv_label_set_text(charger.current, charging ? "32.0 A" : "0.0 A");
-	if (charging) {
-		lv_label_set_text_fmt(charger.remaining, "%u min", 100 - charger.percent);
-	} else {
-		lv_label_set_text(charger.remaining, charger.state == COMPLETE ? "0 min" : "--");
-	}
+	lv_label_set_text(charger.source_label, truck_connected ? "Waiting for battery data" : "");
+	lv_label_set_text(charger.voltage, "--");
+	lv_label_set_text(charger.current, "--");
+	lv_label_set_text(charger.remaining, "--");
 }
 
 static void toggle_charge(lv_event_t *event)
 {
-	switch (charger.state) {
+	switch (charger_charge_state()) {
 	case READY:
 	case PAUSED:
-		charger.state = CHARGING;
+		charger_set_charging(true);
 		break;
 	case CHARGING:
-		charger.state = PAUSED;
+		charger_set_charging(false);
 		break;
 	case COMPLETE:
-		charger.percent = 64;
-		charger.state = READY;
+		charger_reset_charge();
 		break;
 	}
 	update_display();
@@ -205,19 +201,8 @@ static void toggle_charge(lv_event_t *event)
 
 static void reset_session(lv_event_t *event)
 {
-	charger.state = READY;
-	charger.percent = 64;
+	charger_reset_charge();
 	update_display();
-}
-
-static void advance_demo(lv_timer_t *timer)
-{
-	if (charger.source == LOCAL_DEMO && charger.state == CHARGING) {
-		if (++charger.percent == 100) {
-			charger.state = COMPLETE;
-		}
-		update_display();
-	}
 }
 
 static void update_truck(enum charger_truck truck)
@@ -231,7 +216,7 @@ static void update_truck(enum charger_truck truck)
 		[CHARGER_TRUCK_CUSTOM] = "Custom truck",
 	};
 	static const char *const descriptions[] = {
-		[CHARGER_TRUCK_NONE] = "Select a truck in Charger Tool",
+		[CHARGER_TRUCK_NONE] = "Waiting for vehicle connection",
 		[CHARGER_TRUCK_EJC216] = "Pedestrian stacker",
 		[CHARGER_TRUCK_EFG216] = "Three-wheel forklift",
 		[CHARGER_TRUCK_ETV216I] = "Reach truck",
@@ -347,35 +332,57 @@ static void update_alerts(uint16_t warnings, uint16_t errors)
 static void refresh_can(lv_timer_t *timer)
 {
 	static enum charger_truck displayed_truck;
+	static enum charger_charge_state displayed_charge_state;
+	static uint8_t displayed_indicators;
 	struct battery_sample sample;
 	const enum charger_truck truck = charger_uds_truck();
+	const uint8_t indicators = charger_uds_indicators();
+	const enum charger_charge_state charge_state = charger_charge_state();
+	bool changed = charge_state != displayed_charge_state;
 
+	displayed_charge_state = charge_state;
+	if (indicators != displayed_indicators) {
+		lv_obj_set_style_bg_color(charger.power_stage,
+			lv_color_hex(indicators & CHARGER_POWER_STAGE ? LED_ON : LED_OFF), 0);
+		lv_obj_set_style_bg_color(charger.pm_enable,
+			lv_color_hex(indicators & CHARGER_PM_ENABLE ? LED_ON : LED_OFF), 0);
+		displayed_indicators = indicators;
+	}
 	if (truck != displayed_truck) {
 		update_truck(truck);
 		displayed_truck = truck;
+		charger.source = CAN_WAITING;
+		changed = true;
 	}
 	if (charger_uds_sample(&sample)) {
 		if (charger.source != CAN_LIVE || memcmp(&sample, &charger.sample, sizeof(sample))) {
 			charger.source = CAN_LIVE;
 			charger.sample = sample;
-			update_display();
 			update_alerts(sample.warnings, sample.faults);
+			changed = true;
 		}
 	} else if (charger.source == CAN_LIVE) {
 		charger.source = CAN_STALE;
+		changed = true;
+	}
+	if (changed) {
 		update_display();
 	}
 }
 
-static lv_obj_t *metric(lv_obj_t *screen, int x, const char *title, lv_obj_t **title_obj)
+static lv_obj_t *metric(lv_obj_t *screen, int x, const char *title)
 {
 	lv_obj_t *card = panel(screen, x, 394, 310, 102, WHITE, 12);
-	lv_obj_t *caption = label(card, title, 20, 13, &lv_font_montserrat_20, MUTED);
-
-	if (title_obj) {
-		*title_obj = caption;
-	}
+	label(card, title, 20, 13, &lv_font_montserrat_20, MUTED);
 	return label(card, "", 20, 48, &lv_font_montserrat_28, INK);
+}
+
+static lv_obj_t *status_led(lv_obj_t *parent, int x, int width, const char *title)
+{
+	lv_obj_t *card = panel(parent, x, 514, width, 60, WHITE, 10);
+
+	label(card, title, 31, 19, &lv_font_montserrat_20, INK);
+	return panel(card, 10, 23, 14, 14, LED_OFF, LV_RADIUS_CIRCLE);
 }
 
 static void create_alert_pages(lv_obj_t *screen)
@@ -431,9 +438,11 @@ static void create_dashboard(void)
 	charger.dashboard = panel(screen, 0, 0, 1024, 600, SURFACE, 0);
 	lv_obj_move_to_index(charger.dashboard, 0);
 	session = panel(charger.dashboard, 30, 104, 588, 270, INK, 14);
-	label(session, "STATE OF CHARGE", 26, 22, &lv_font_montserrat_20, 0xc2cad1);
+	charger.percent_title = label(session, "STATE OF CHARGE", 26, 22,
+				      &lv_font_montserrat_20, 0xc2cad1);
 	charger.percent_text = label(session, "", 26, 58, &lv_font_montserrat_48, WHITE);
 	charger.progress = lv_bar_create(session);
+	lv_bar_set_range(charger.progress, 0, 1000);
 	lv_obj_set_pos(charger.progress, 26, 135);
 	lv_obj_set_size(charger.progress, 536, 17);
 	lv_obj_set_style_bg_color(charger.progress, lv_color_hex(0x414951), LV_PART_MAIN);
@@ -449,15 +458,17 @@ static void create_dashboard(void)
 	charger.truck_caption = label(truck_card, "", 20, 228, &lv_font_montserrat_20, MUTED);
 	update_truck(CHARGER_TRUCK_NONE);
 
-	charger.voltage = metric(charger.dashboard, 30, "Battery voltage", NULL);
-	charger.current = metric(charger.dashboard, 357, "Charge current", NULL);
-	charger.remaining = metric(charger.dashboard, 684, "Estimated time", &charger.remaining_title);
-	alerts.navigation = button(charger.dashboard, "", 30, 514, 316, false, show_alerts);
-	button(charger.dashboard, "Reset demo", 366, 514, 196, false, reset_session);
-	charger.action = button(charger.dashboard, "", 706, 514, 288, true, toggle_charge);
+	charger.voltage = metric(charger.dashboard, 30, "Battery voltage");
+	charger.current = metric(charger.dashboard, 357, "Charge current");
+	charger.remaining = metric(charger.dashboard, 684, "Battery temperature");
+	alerts.navigation = button(charger.dashboard, "", 30, 514, 275, false, show_alerts);
+	button(charger.dashboard, "Reset", 317, 514, 146, false, reset_session);
+	charger.power_stage = status_led(charger.dashboard, 475, 165, "Power stage");
+	charger.pm_enable = status_led(charger.dashboard, 650, 148, "PM Enable");
+	charger.action = button(charger.dashboard, "", 810, 514, 184, true, toggle_charge);
+	lv_obj_set_style_bg_color(lv_obj_get_parent(charger.action), lv_color_hex(LINE), LV_STATE_DISABLED);
 	create_alert_pages(screen);
 	update_display();
-	lv_timer_create(advance_demo, 1500, NULL);
 	lv_timer_create(refresh_can, 125, NULL);
 }
 
