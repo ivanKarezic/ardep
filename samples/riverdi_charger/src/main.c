@@ -469,7 +469,7 @@ static void create_dashboard(void)
 	lv_obj_set_style_bg_color(lv_obj_get_parent(charger.action), lv_color_hex(LINE), LV_STATE_DISABLED);
 	create_alert_pages(screen);
 	update_display();
-	lv_timer_create(refresh_can, 125, NULL);
+	lv_timer_create(refresh_can, 40, NULL);
 }
 
 int main(void)

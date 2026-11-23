@@ -22,6 +22,7 @@
 #define DID_CHARGE 0xf204
 #define DID_VERSION 0xf189
 #define BATTERY_WIRE_SIZE 12
+#define BENCH_P2_MS 5
 
 static const struct device *const can = DEVICE_DT_GET(DT_CHOSEN(zephyr_canbus));
 static struct iso14229_zephyr_instance uds;
@@ -334,6 +335,7 @@ static UDSErr_t uds_event(struct iso14229_zephyr_instance *inst, UDSEvent_t even
 	case UDS_EVT_DiagSessCtrl: {
 		UDSDiagSessCtrlArgs_t *args = arg;
 		if (args->type == 1) {
+			inst->server.p2_ms = BENCH_P2_MS;
 #ifdef CONFIG_BOOTLOADER_MCUBOOT
 			if (phase != UPDATE_STAGED) {
 				abandon_download();
@@ -344,6 +346,7 @@ static UDSErr_t uds_event(struct iso14229_zephyr_instance *inst, UDSEvent_t even
 		}
 #ifdef CONFIG_BOOTLOADER_MCUBOOT
 		if (args->type == 2 && boot_is_img_confirmed()) {
+			inst->server.p2_ms = UDS_SERVER_DEFAULT_P2_MS;
 			inst->server.s3_ms = 30000;
 			args->p2_ms = 25000;
 			args->p2_star_ms = 30000;
@@ -353,6 +356,7 @@ static UDSErr_t uds_event(struct iso14229_zephyr_instance *inst, UDSEvent_t even
 		return UDS_NRC_SubFunctionNotSupported;
 	}
 	case UDS_EVT_SessionTimeout:
+		inst->server.p2_ms = BENCH_P2_MS;
 #ifdef CONFIG_BOOTLOADER_MCUBOOT
 		if (phase != UPDATE_STAGED) {
 			abandon_download();
@@ -389,6 +393,7 @@ int charger_uds_init(void)
 	}
 	rc = iso14229_zephyr_init(&uds, &address, can, NULL);
 	if (rc == 0) {
+		uds.server.p2_ms = BENCH_P2_MS;
 		rc = uds.set_callback(&uds, uds_event);
 	}
 	if (rc == 0) {
