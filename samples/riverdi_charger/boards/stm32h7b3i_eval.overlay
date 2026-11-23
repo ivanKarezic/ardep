@@ -7,6 +7,10 @@
 		zephyr,code-partition = &slot0_partition;
 	};
 
+	zephyr,user {
+		panel-reset-gpios = <&gpioa 2 GPIO_ACTIVE_LOW>;
+	};
+
 	lvgl_pointer {
 		compatible = "zephyr,lvgl-pointer-input";
 		input = <&gt911>;

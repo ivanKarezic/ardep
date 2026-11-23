@@ -4,7 +4,6 @@
 #include <st/h7/stm32h7b3Xi.dtsi>
 #include <st/h7/stm32h7b3lihxq-pinctrl.dtsi>
 #include <zephyr/dt-bindings/display/panel.h>
-#include <zephyr/dt-bindings/memory-attr/memory-attr-arm.h>
 #include <zephyr/dt-bindings/memory-controller/stm32-fmc-sdram.h>
 
 / {
@@ -14,19 +13,19 @@
 	chosen {
 		zephyr,console = &usart1;
 		zephyr,shell-uart = &usart1;
-		zephyr,sram = &sram1;
+		zephyr,sram = &sram0;
 		zephyr,flash = &flash0;
 		zephyr,display = &ltdc;
 		zephyr,canbus = &fdcan1;
 		zephyr,touch = &gt911;
 	};
 
-	display_sdram: memory@d0000000 {
+	/* Contiguous AXI SRAM1 and SRAM2 reserved for the LTDC framebuffer. */
+	display_ram: memory@24040000 {
 		compatible = "zephyr,memory-region", "mmio-sram";
 		device_type = "memory";
-		reg = <0xd0000000 DT_SIZE_M(32)>;
-		zephyr,memory-region = "DISPLAY_SDRAM";
-		zephyr,memory-attr = <DT_MEM_ARM(ATTR_MPU_RAM)>;
+		reg = <0x24040000 DT_SIZE_K(768)>;
+		zephyr,memory-region = "DISPLAY_RAM";
 	};
 
 	can_phy: can-phy {
@@ -110,7 +109,8 @@
 };
 
 &fdcan1 {
-	pinctrl-0 = <&fdcan1_rx_pb8 &fdcan1_tx_pb9>;
+	/* CN22 uses PA11/PA12 when solder bridges SB35 and SB36 are fitted. */
+	pinctrl-0 = <&fdcan1_rx_pa11 &fdcan1_tx_pa12>;
 	pinctrl-names = "default";
 	clocks = <&rcc STM32_CLOCK(APB1_2, 8)>, <&rcc STM32_SRC_PLL1_Q FDCAN_SEL(1)>;
 	phys = <&can_phy>;
@@ -156,17 +156,49 @@
 	};
 };
 
+#define LCD_PIN_HIGH_SPEED(pin) &pin { slew-rate = "high-speed"; };
+LCD_PIN_HIGH_SPEED(ltdc_hsync_pi12)
+LCD_PIN_HIGH_SPEED(ltdc_vsync_pi13)
+LCD_PIN_HIGH_SPEED(ltdc_clk_pi14)
+LCD_PIN_HIGH_SPEED(ltdc_r0_pi15)
+LCD_PIN_HIGH_SPEED(ltdc_r1_pj0)
+LCD_PIN_HIGH_SPEED(ltdc_r2_pj1)
+LCD_PIN_HIGH_SPEED(ltdc_r3_pj2)
+LCD_PIN_HIGH_SPEED(ltdc_r4_pj3)
+LCD_PIN_HIGH_SPEED(ltdc_r5_pj4)
+LCD_PIN_HIGH_SPEED(ltdc_r6_pj5)
+LCD_PIN_HIGH_SPEED(ltdc_r7_pj6)
+LCD_PIN_HIGH_SPEED(ltdc_g0_pj7)
+LCD_PIN_HIGH_SPEED(ltdc_g1_pj8)
+LCD_PIN_HIGH_SPEED(ltdc_g2_pj9)
+LCD_PIN_HIGH_SPEED(ltdc_g3_pj10)
+LCD_PIN_HIGH_SPEED(ltdc_g4_pj11)
+LCD_PIN_HIGH_SPEED(ltdc_g5_pk0)
+LCD_PIN_HIGH_SPEED(ltdc_g6_pk1)
+LCD_PIN_HIGH_SPEED(ltdc_g7_pk2)
+LCD_PIN_HIGH_SPEED(ltdc_b0_pj12)
+LCD_PIN_HIGH_SPEED(ltdc_b1_pj13)
+LCD_PIN_HIGH_SPEED(ltdc_b2_pj14)
+LCD_PIN_HIGH_SPEED(ltdc_b3_pj15)
+LCD_PIN_HIGH_SPEED(ltdc_b4_pk3)
+LCD_PIN_HIGH_SPEED(ltdc_b5_pk4)
+LCD_PIN_HIGH_SPEED(ltdc_b6_pk5)
+LCD_PIN_HIGH_SPEED(ltdc_b7_pk6)
+LCD_PIN_HIGH_SPEED(ltdc_de_pk7)
+#undef LCD_PIN_HIGH_SPEED
+
 &ltdc {
-	pinctrl-0 = <&ltdc_r0_pi15 &ltdc_r1_pj0 &ltdc_r2_pj1 &ltdc_r3_pj2
-		     &ltdc_r4_pj3 &ltdc_r5_pj4 &ltdc_r6_pj5 &ltdc_r7_pj6
-		     &ltdc_g0_pj7 &ltdc_g1_pj8 &ltdc_g2_pj9 &ltdc_g3_pj10
-		     &ltdc_g4_pj11 &ltdc_g5_pk0 &ltdc_g6_pk1 &ltdc_g7_pk2
-		     &ltdc_b0_pj12 &ltdc_b1_pj13 &ltdc_b2_pj14 &ltdc_b3_pj15
-		     &ltdc_b4_pk3 &ltdc_b5_pk4 &ltdc_b6_pk5 &ltdc_b7_pk6
-		     &ltdc_de_pk7 &ltdc_clk_pi14 &ltdc_hsync_pi12 &ltdc_vsync_pi13>;
+	pinctrl-0 = <&ltdc_hsync_pi12 &ltdc_vsync_pi13 &ltdc_clk_pi14 &ltdc_r0_pi15
+		     &ltdc_r1_pj0 &ltdc_r2_pj1 &ltdc_r3_pj2 &ltdc_r4_pj3
+		     &ltdc_r5_pj4 &ltdc_r6_pj5 &ltdc_r7_pj6 &ltdc_g0_pj7
+		     &ltdc_g1_pj8 &ltdc_g2_pj9 &ltdc_g3_pj10 &ltdc_g4_pj11
+		     &ltdc_g5_pk0 &ltdc_g6_pk1 &ltdc_g7_pk2 &ltdc_b0_pj12
+		     &ltdc_b1_pj13 &ltdc_b2_pj14 &ltdc_b3_pj15 &ltdc_b4_pk3
+		     &ltdc_b5_pk4 &ltdc_b6_pk5 &ltdc_b7_pk6 &ltdc_de_pk7>;
 	pinctrl-names = "default";
 	bl-ctrl-gpios = <&gpioa 1 GPIO_ACTIVE_HIGH>;
-	ext-sdram = <&display_sdram>;
+	/* The LTDC binding uses this property to select the framebuffer region. */
+	ext-sdram = <&display_ram>;
 	width = <800>;
 	height = <480>;
 	pixel-format = <PANEL_PIXEL_FORMAT_RGB_888>;

@@ -6,10 +6,28 @@
 #ifdef CONFIG_BOARD_STM32H7B3I_EVAL
 #include <errno.h>
 #include <zephyr/device.h>
+#include <zephyr/drivers/gpio.h>
+#include <zephyr/kernel.h>
 
 static inline int charger_panel_init(void)
 {
-	/* The parallel RGB panel uses the LTDC driver and board reset. */
+	const struct gpio_dt_spec reset =
+		GPIO_DT_SPEC_GET(DT_PATH(zephyr_user), panel_reset_gpios);
+	int ret;
+
+	if (!gpio_is_ready_dt(&reset)) {
+		return -ENODEV;
+	}
+	ret = gpio_pin_configure_dt(&reset, GPIO_OUTPUT_ACTIVE);
+	if (ret < 0) {
+		return ret;
+	}
+	k_msleep(20);
+	ret = gpio_pin_set_dt(&reset, 0);
+	if (ret < 0) {
+		return ret;
+	}
+	k_msleep(10);
 	return 0;
 }
 
