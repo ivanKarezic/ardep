@@ -2,6 +2,7 @@
 
 #include <errno.h>
 #include <ardep/iso14229.h>
+#include <zephyr/sys/atomic.h>
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/sys/reboot.h>
 #include <zephyr/app_version.h>
@@ -16,6 +17,7 @@
 
 #define DID_BATTERY 0xf200
 #define DID_PROFILE 0xf201
+#define DID_TRUCK 0xf202
 #define DID_VERSION 0xf189
 #define BATTERY_WIRE_SIZE 12
 
@@ -23,6 +25,7 @@ static const struct device *const can = DEVICE_DT_GET(DT_CHOSEN(zephyr_canbus));
 static struct iso14229_zephyr_instance uds;
 static struct battery_sample battery = {640, 520, 0, 250, 0, 0};
 static int64_t last_update = -1;
+static atomic_t selected_truck;
 K_MUTEX_DEFINE(battery_lock);
 
 bool charger_uds_sample(struct battery_sample *sample)
@@ -32,6 +35,11 @@ bool charger_uds_sample(struct battery_sample *sample)
 	bool fresh = last_update >= 0 && k_uptime_get() - last_update < 5000;
 	k_mutex_unlock(&battery_lock);
 	return fresh;
+}
+
+enum charger_truck charger_uds_truck(void)
+{
+	return atomic_get(&selected_truck);
 }
 
 static UDSErr_t read_did(UDSServer_t *srv, UDSRDBIArgs_t *args)
@@ -53,6 +61,9 @@ static UDSErr_t read_did(UDSServer_t *srv, UDSRDBIArgs_t *args)
 		return args->copy(srv, profile, sizeof(profile));
 	case DID_VERSION:
 		return args->copy(srv, version, sizeof(version) - 1);
+	case DID_TRUCK:
+		wire[0] = charger_uds_truck();
+		return args->copy(srv, wire, 1);
 	case DID_BATTERY:
 		charger_uds_sample(&sample);
 		sys_put_be16(sample.soc_permille, wire);
@@ -69,6 +80,16 @@ static UDSErr_t read_did(UDSServer_t *srv, UDSRDBIArgs_t *args)
 
 static UDSErr_t write_did(const UDSWDBIArgs_t *args)
 {
+	if (args->dataId == DID_TRUCK) {
+		if (args->len != 1) {
+			return UDS_NRC_IncorrectMessageLengthOrInvalidFormat;
+		}
+		if (args->data[0] >= CHARGER_TRUCK_COUNT) {
+			return UDS_NRC_RequestOutOfRange;
+		}
+		atomic_set(&selected_truck, args->data[0]);
+		return UDS_PositiveResponse;
+	}
 	if (args->dataId != DID_BATTERY) {
 		return UDS_NRC_RequestOutOfRange;
 	}

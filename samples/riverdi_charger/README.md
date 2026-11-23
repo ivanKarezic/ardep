@@ -1,4 +1,4 @@
-# Riverdi forklift charger prototype
+# SLHx Advanced Charger
 
 The LVGL dashboard shows a simulated 48 V battery charging session. Use
 **Start charge**, **Pause charge**, **Resume charge**, or **Reset demo**.
@@ -53,6 +53,12 @@ values only.
 | F200 | Read and write in default session | Six big-endian 16-bit values. SoC in permille, voltage in decivolts, signed current in deciamps, signed temperature in deci-degrees Celsius, warning mask, fault mask. |
 | F201 | Read | ASCII `RVC1` followed by one byte. 0 means telemetry only and 1 means firmware update support. |
 | F189 | Read | ASCII charger firmware version. |
+| F202 | Read and write | One byte. 0 disconnects, 1 selects EJC 216, 2 EFG 216, 3 ETV 216i, 4 EFG 425, and 5 Custom. |
+
+The dashboard shows the simulated truck selected in Charger Tool. Incoming
+warning and error bits open an overlay. Acknowledge it by touch or open
+**View details**. The **Warnings and errors** page keeps active and cleared
+flags for the current boot, with one description per diagnostic code.
 
 ## Signed CAN update
 

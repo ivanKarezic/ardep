@@ -20,6 +20,8 @@
 #define TOUCH_ACTIVE BIT(6)
 #define TOUCH_CONTACT_SIZE 5
 #define TOUCH_COUNT_OFFSET 61
+#define TOUCH_POLL_MS 10
+#define TOUCH_RELEASE_TIMEOUT_MS 80
 #define RIVERDI_DSI_PHY_THS_ZERO 213U
 
 static const struct gpio_dt_spec panel_reset = GPIO_DT_SPEC_GET(CHARGER_IO, panel_reset_gpios);
@@ -137,13 +139,17 @@ static void touch_interrupt(const struct device *dev, struct gpio_callback *cb, 
 
 static void read_touch(lv_indev_t *indev, lv_indev_data_t *data)
 {
+	static int64_t last_contact_at;
 	uint8_t report[64];
+	const bool pending = k_sem_take(&touch_pending, K_NO_WAIT) == 0;
+	const int64_t now = k_uptime_get();
 
-	if (k_sem_take(&touch_pending, K_NO_WAIT) == 0) {
+	/* Keep checking for lift-off if the interrupt edge was missed. */
+	if (pending || last_touch.state == LV_INDEV_STATE_PRESSED) {
 		int ret = i2c_read(touch_bus, report, sizeof(report), TOUCH_ADDRESS);
 
-		last_touch.state = LV_INDEV_STATE_RELEASED;
 		if (ret == 0 && report[0] == TOUCH_REPORT) {
+			last_touch.state = LV_INDEV_STATE_RELEASED;
 			for (size_t i = 0; i < MIN(report[TOUCH_COUNT_OFFSET], 10); i++) {
 				const uint8_t *contact = &report[1 + i * TOUCH_CONTACT_SIZE];
 				uint16_t x = sys_get_le16(contact + 1);
@@ -154,9 +160,12 @@ static void read_touch(lv_indev_t *indev, lv_indev_data_t *data)
 					last_touch.point.x = x;
 					last_touch.point.y = y;
 					last_touch.state = LV_INDEV_STATE_PRESSED;
+					last_contact_at = now;
 					break;
 				}
 			}
+		} else if (now - last_contact_at >= TOUCH_RELEASE_TIMEOUT_MS) {
+			last_touch.state = LV_INDEV_STATE_RELEASED;
 		}
 	}
 	data->point = last_touch.point;
@@ -195,5 +204,6 @@ int riverdi_touch_init(void)
 	}
 	lv_indev_set_type(pointer, LV_INDEV_TYPE_POINTER);
 	lv_indev_set_read_cb(pointer, read_touch);
+	lv_timer_set_period(lv_indev_get_read_timer(pointer), TOUCH_POLL_MS);
 	return 0;
 }
