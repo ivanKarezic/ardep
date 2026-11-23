@@ -2,10 +2,8 @@
 
 The LVGL dashboard shows battery data received over UDS. Use **Start
 charge**, **Pause charge**, **Resume charge**, or **Reset** to control the
-bench session. The desktop truck simulator supplies SoC.
-The demo starts at 64% and advances by one percentage point every 1.5 seconds
-while charging. The voltage, current, and time remaining are simulated.
-The prototype does not send charger commands.
+bench session. The desktop truck simulator supplies SoC, voltage, current,
+temperature, warnings, and faults.
 
 The 1024 × 600 MIPI DSI panel, SDRAM framebuffer, and I²C touchscreen use the
 hardware configuration from the local `Riverdi70_Test` TouchGFX project.
@@ -29,6 +27,41 @@ $env:GNUARMEMB_TOOLCHAIN_PATH = 'C:/ST/STM32CubeCLT_1.18.0/GNU-tools-for-STM32'
 
 The embedded `jungheinrich.rgb565` image is a 256 × 39 pixel conversion of the
 company's wordmark. [Jungheinrich official website](https://www.jungheinrich.com/en)
+
+## STM32H7B3I-EVAL with MB1370-LCD-B02
+
+Build the same application with board target `stm32h7b3i_eval`. This target
+uses the 800 × 480 Rocktech RGB panel, the B02 Goodix touchscreen on I²C2,
+an SDRAM framebuffer, and the board's FDCAN1 transceiver. The app scales the
+same dashboard and overlays to the smaller display. The board target assumes
+the factory direct-SMPS configuration, the 24 MHz HSE, and the default
+backlight and touch wiring. Connect the display FFC at CN23 and the touch
+and display power cable at CN30.
+
+For the first signed SWD installation, create a separate ECDSA P-256
+development key and sysbuild configuration for this board. Use the same
+three MCUboot settings as below and point the key setting to the EVAL key.
+
+```powershell
+.\.venv\Scripts\imgtool.exe keygen -k build/h7b3i_eval_dev.pem -t ecdsa-p256
+.\.venv\Scripts\imgtool.exe getpub -e pem -k build/h7b3i_eval_dev.pem -o build/h7b3i_eval_dev_public.pem
+$conf = (Resolve-Path 'build/h7b3i_eval_signing.conf').Path.Replace('\','/')
+.\.venv\Scripts\west.exe build --sysbuild -b stm32h7b3i_eval -d build/h7b3i_eval_charger ardep/samples/riverdi_charger -- "-DSB_CONF_FILE=$conf" "-Driverdi_charger_EXTRA_CONF_FILE=ota.conf"
+.\.venv\Scripts\west.exe flash -d build/h7b3i_eval_charger -r stm32cubeprogrammer --no-erase
+```
+
+Use the onboard ST-LINK USB connector CN21, or select `-r jlink` when an
+external J-Link is connected to the EVAL. The EVAL and Riverdi share the
+UDS profile and update slot addresses. Select the EVAL signed binary and its
+public key when updating that board through Charger Tool. Use one target
+per bench bus with the default CAN IDs.
+
+On EVAL CAN connector CN22, use pin 7 for CAN-H, pin 2 for CAN-L, and pin 3
+for GND. Check that the CAN-routing bridges SB35 and SB36 are fitted, and
+use a terminated 500 kbit/s bus.
+[ST UM2662](https://www.st.com/resource/en/user_manual/um2662-evaluation-board-with-stm32h7b3li-mcu-stmicroelectronics.pdf) ·
+[MB1370-LCD-B02 schematic](https://www.st.com/resource/en/schematic_pack/mb1370-lcd-b02-schematic.pdf) ·
+[STM32H7B3I-EVAL BSP](https://github.com/STMicroelectronics/stm32h7b3i-eval-bsp)
 
 ## CAN and desktop console
 

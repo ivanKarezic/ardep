@@ -83,6 +83,36 @@ static struct {
 	lv_obj_t *summary;
 } alerts;
 
+/* Lay out both displays from the same 1024 x 600 design coordinates. */
+#define LCD_WIDTH DT_PROP(DT_CHOSEN(zephyr_display), width)
+#define LCD_HEIGHT DT_PROP(DT_CHOSEN(zephyr_display), height)
+
+#if LCD_WIDTH < 1024
+#define FONT_SMALL (&lv_font_montserrat_16)
+#define FONT_MEDIUM (&lv_font_montserrat_22)
+#define FONT_LARGE (&lv_font_montserrat_38)
+#else
+#define FONT_SMALL (&lv_font_montserrat_20)
+#define FONT_MEDIUM (&lv_font_montserrat_28)
+#define FONT_LARGE (&lv_font_montserrat_48)
+#endif
+
+static int layout_x(int value)
+{
+	return value * LCD_WIDTH / 1024;
+}
+
+static int layout_y(int value)
+{
+	return value * LCD_HEIGHT / 600;
+}
+
+static void layout_image(lv_obj_t *image)
+{
+	lv_image_set_pivot(image, 0, 0);
+	lv_image_set_scale(image, LV_SCALE_NONE * LCD_WIDTH / 1024);
+}
+
 static lv_obj_t *panel(lv_obj_t *parent, int x, int y, int width, int height,
 		      uint32_t color, int radius)
 {
@@ -90,8 +120,8 @@ static lv_obj_t *panel(lv_obj_t *parent, int x, int y, int width, int height,
 
 	lv_obj_remove_style_all(obj);
 	lv_obj_remove_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
-	lv_obj_set_pos(obj, x, y);
-	lv_obj_set_size(obj, width, height);
+	lv_obj_set_pos(obj, layout_x(x), layout_y(y));
+	lv_obj_set_size(obj, layout_x(width), layout_y(height));
 	lv_obj_set_style_bg_color(obj, lv_color_hex(color), 0);
 	lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, 0);
 	lv_obj_set_style_radius(obj, radius, 0);
@@ -104,7 +134,7 @@ static lv_obj_t *label(lv_obj_t *parent, const char *text, int x, int y,
 	lv_obj_t *obj = lv_label_create(parent);
 
 	lv_label_set_text(obj, text);
-	lv_obj_set_pos(obj, x, y);
+	lv_obj_set_pos(obj, layout_x(x), layout_y(y));
 	lv_obj_set_style_text_font(obj, font, 0);
 	lv_obj_set_style_text_color(obj, lv_color_hex(color), 0);
 	return obj;
@@ -116,8 +146,8 @@ static lv_obj_t *button(lv_obj_t *parent, const char *text, int x, int y, int wi
 	lv_obj_t *obj = lv_button_create(parent);
 	lv_obj_t *caption;
 
-	lv_obj_set_pos(obj, x, y);
-	lv_obj_set_size(obj, width, 60);
+	lv_obj_set_pos(obj, layout_x(x), layout_y(y));
+	lv_obj_set_size(obj, layout_x(width), layout_y(60));
 	lv_obj_set_style_radius(obj, 10, 0);
 	lv_obj_set_style_bg_color(obj, lv_color_hex(primary ? YELLOW : WHITE), 0);
 	lv_obj_set_style_border_color(obj, lv_color_hex(LINE), 0);
@@ -125,7 +155,7 @@ static lv_obj_t *button(lv_obj_t *parent, const char *text, int x, int y, int wi
 	lv_obj_set_style_shadow_width(obj, 0, 0);
 	lv_obj_set_style_bg_color(obj, lv_color_hex(primary ? 0xe6b400 : LINE), LV_STATE_PRESSED);
 	lv_obj_add_event_cb(obj, callback, LV_EVENT_CLICKED, NULL);
-	caption = label(obj, text, 0, 0, &lv_font_montserrat_20, INK);
+	caption = label(obj, text, 0, 0, FONT_SMALL, INK);
 	lv_obj_center(caption);
 	return caption;
 }
@@ -147,7 +177,7 @@ static void update_display(void)
 
 	lv_label_set_text(charger.status, truck_connected ? status[state] : "Connect a truck");
 	lv_label_set_text(charger.action, action[state]);
-	lv_obj_set_y(charger.status, show_sample ? 172 : 104);
+	lv_obj_set_y(charger.status, layout_y(show_sample ? 172 : 104));
 	lv_obj_set_flag(charger.percent_title, LV_OBJ_FLAG_HIDDEN, !show_sample);
 	lv_obj_set_flag(charger.percent_text, LV_OBJ_FLAG_HIDDEN, !show_sample);
 	lv_obj_set_flag(charger.progress, LV_OBJ_FLAG_HIDDEN, !show_sample);
@@ -373,15 +403,15 @@ static void refresh_can(lv_timer_t *timer)
 static lv_obj_t *metric(lv_obj_t *screen, int x, const char *title)
 {
 	lv_obj_t *card = panel(screen, x, 394, 310, 102, WHITE, 12);
-	label(card, title, 20, 13, &lv_font_montserrat_20, MUTED);
-	return label(card, "", 20, 48, &lv_font_montserrat_28, INK);
+	label(card, title, 20, 13, FONT_SMALL, MUTED);
+	return label(card, "", 20, 48, FONT_MEDIUM, INK);
 }
 
 static lv_obj_t *status_led(lv_obj_t *parent, int x, int width, const char *title)
 {
 	lv_obj_t *card = panel(parent, x, 514, width, 60, WHITE, 10);
 
-	label(card, title, 31, 19, &lv_font_montserrat_20, INK);
+	label(card, title, 31, 19, FONT_SMALL, INK);
 	return panel(card, 10, 23, 14, 14, LED_OFF, LV_RADIUS_CIRCLE);
 }
 
@@ -391,14 +421,14 @@ static void create_alert_pages(lv_obj_t *screen)
 	lv_obj_t *card;
 
 	alerts.page = panel(screen, 0, 84, 1024, 516, SURFACE, 0);
-	label(alerts.page, "Warnings and errors", 30, 18, &lv_font_montserrat_28, INK);
-	alerts.status = label(alerts.page, "", 30, 58, &lv_font_montserrat_20, MUTED);
+	label(alerts.page, "Warnings and errors", 30, 18, FONT_MEDIUM, INK);
+	alerts.status = label(alerts.page, "", 30, 58, FONT_SMALL, MUTED);
 	button(alerts.page, "Dashboard", 780, 14, 214, false, show_dashboard);
 	scroll = panel(alerts.page, 30, 98, 964, 393, WHITE, 12);
 	lv_obj_add_flag(scroll, LV_OBJ_FLAG_SCROLLABLE);
 	lv_obj_set_scroll_dir(scroll, LV_DIR_VER);
-	alerts.details = label(scroll, "", 22, 19, &lv_font_montserrat_20, INK);
-	lv_obj_set_width(alerts.details, 908);
+	alerts.details = label(scroll, "", 22, 19, FONT_SMALL, INK);
+	lv_obj_set_width(alerts.details, layout_x(908));
 	lv_obj_set_style_text_line_space(alerts.details, 6, 0);
 	update_alert_details();
 	lv_obj_add_flag(alerts.page, LV_OBJ_FLAG_HIDDEN);
@@ -410,8 +440,8 @@ static void create_alert_pages(lv_obj_t *screen)
 	lv_obj_remove_flag(card, LV_OBJ_FLAG_CLICKABLE);
 	alerts.accent = panel(card, 0, 0, 580, 8, YELLOW, 0);
 	lv_obj_remove_flag(alerts.accent, LV_OBJ_FLAG_CLICKABLE);
-	alerts.headline = label(card, "", 27, 30, &lv_font_montserrat_28, INK);
-	alerts.summary = label(card, "", 27, 85, &lv_font_montserrat_20, MUTED);
+	alerts.headline = label(card, "", 27, 30, FONT_MEDIUM, INK);
+	alerts.summary = label(card, "", 27, 85, FONT_SMALL, MUTED);
 	button(card, "Acknowledge", 27, 148, 245, false, acknowledge_alerts);
 	button(card, "View details", 302, 148, 250, true, show_alerts);
 	lv_obj_add_flag(alerts.overlay, LV_OBJ_FLAG_HIDDEN);
@@ -432,30 +462,32 @@ static void create_dashboard(void)
 	panel(header, 0, 80, 1024, 4, YELLOW, 0);
 	wordmark = lv_image_create(header);
 	lv_image_set_src(wordmark, &logo);
-	lv_obj_set_pos(wordmark, 30, 19);
-	label(header, "SLHx Advanced Charger", 716, 30, &lv_font_montserrat_20, MUTED);
+	lv_obj_set_pos(wordmark, layout_x(30), layout_y(19));
+	layout_image(wordmark);
+	label(header, "SLHx Advanced Charger", 716, 30, FONT_SMALL, MUTED);
 
 	charger.dashboard = panel(screen, 0, 0, 1024, 600, SURFACE, 0);
 	lv_obj_move_to_index(charger.dashboard, 0);
 	session = panel(charger.dashboard, 30, 104, 588, 270, INK, 14);
 	charger.percent_title = label(session, "STATE OF CHARGE", 26, 22,
-				      &lv_font_montserrat_20, 0xc2cad1);
-	charger.percent_text = label(session, "", 26, 58, &lv_font_montserrat_48, WHITE);
+				      FONT_SMALL, 0xc2cad1);
+	charger.percent_text = label(session, "", 26, 58, FONT_LARGE, WHITE);
 	charger.progress = lv_bar_create(session);
 	lv_bar_set_range(charger.progress, 0, 1000);
-	lv_obj_set_pos(charger.progress, 26, 135);
-	lv_obj_set_size(charger.progress, 536, 17);
+	lv_obj_set_pos(charger.progress, layout_x(26), layout_y(135));
+	lv_obj_set_size(charger.progress, layout_x(536), layout_y(17));
 	lv_obj_set_style_bg_color(charger.progress, lv_color_hex(0x414951), LV_PART_MAIN);
 	lv_obj_set_style_bg_color(charger.progress, lv_color_hex(YELLOW), LV_PART_INDICATOR);
-	charger.status = label(session, "", 26, 172, &lv_font_montserrat_28, WHITE);
-	charger.source_label = label(session, "", 26, 222, &lv_font_montserrat_20, 0xc2cad1);
+	charger.status = label(session, "", 26, 172, FONT_MEDIUM, WHITE);
+	charger.source_label = label(session, "", 26, 222, FONT_SMALL, 0xc2cad1);
 
 	truck_card = panel(charger.dashboard, 634, 104, 360, 270, WHITE, 14);
-	label(truck_card, "CONNECTED TRUCK", 20, 17, &lv_font_montserrat_20, MUTED);
+	label(truck_card, "CONNECTED TRUCK", 20, 17, FONT_SMALL, MUTED);
 	charger.truck = lv_image_create(truck_card);
-	lv_obj_set_pos(charger.truck, 104, 46);
-	charger.truck_name = label(truck_card, "", 20, 184, &lv_font_montserrat_28, INK);
-	charger.truck_caption = label(truck_card, "", 20, 228, &lv_font_montserrat_20, MUTED);
+	lv_obj_set_pos(charger.truck, layout_x(104), layout_y(46));
+	layout_image(charger.truck);
+	charger.truck_name = label(truck_card, "", 20, 184, FONT_MEDIUM, INK);
+	charger.truck_caption = label(truck_card, "", 20, 228, FONT_SMALL, MUTED);
 	update_truck(CHARGER_TRUCK_NONE);
 
 	charger.voltage = metric(charger.dashboard, 30, "Battery voltage");
@@ -481,12 +513,12 @@ int main(void)
 		printk("LTDC is not ready\n");
 		return -ENODEV;
 	}
-	ret = riverdi_panel_init();
+	ret = charger_panel_init();
 	if (ret < 0) {
 		printk("Panel initialization failed (%d)\n", ret);
 		return ret;
 	}
-	ret = riverdi_touch_init();
+	ret = charger_touch_init();
 	if (ret < 0) {
 		printk("Touch initialization failed (%d)\n", ret);
 	}

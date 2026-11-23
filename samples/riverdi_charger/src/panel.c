@@ -67,7 +67,7 @@ static int apply_riverdi_dsi_phy(void)
 	return 0;
 }
 
-int riverdi_panel_init(void)
+int charger_panel_init(void)
 {
 	/* The STM32 host fetches a 16-bit value at offset one for this packet. */
 	static const uint8_t panel_setup[][3] __aligned(2) = {
@@ -172,7 +172,7 @@ static void read_touch(lv_indev_t *indev, lv_indev_data_t *data)
 	data->state = last_touch.state;
 }
 
-int riverdi_touch_init(void)
+int charger_touch_init(void)
 {
 	lv_indev_t *pointer;
 	int ret;

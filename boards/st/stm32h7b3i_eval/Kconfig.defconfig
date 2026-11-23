@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: Apache-2.0
+
+if BOARD_STM32H7B3I_EVAL
+
+config CAN_TRANSCEIVER_INIT_PRIORITY
+	default 75
+
+endif

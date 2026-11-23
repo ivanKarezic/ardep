@@ -1,0 +1,16 @@
+identifier: stm32h7b3i_eval
+name: STM32H7B3I Evaluation Kit
+type: mcu
+arch: arm
+flash: 2048
+ram: 1024
+toolchain:
+  - zephyr
+  - gnuarmemb
+supported:
+  - can
+  - gpio
+  - i2c
+  - display
+  - uart
+vendor: st
