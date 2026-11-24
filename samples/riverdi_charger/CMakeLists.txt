@@ -16,6 +16,7 @@ project(riverdi_charger)
 
 target_sources(app PRIVATE src/main.c src/charger_uds.c src/truck_art.c)
 add_subdirectory(src/panels)
+add_subdirectory(src/pm_control)
 
 
 generate_inc_file_for_target(app src/jungheinrich.rgb565

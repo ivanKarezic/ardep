@@ -34,6 +34,17 @@
 		max-bitrate = <5000000>;
 		#phy-cells = <0>;
 	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		/* Not actually an LED, but used as a node from which to fetch gpio_dt_spec in application */
+		/* TODO: Change GPIO port and pin according to the actual hardware */
+		lm_enable: led-1 {
+			gpios = <&gpioh 3 (GPIO_OPEN_DRAIN | GPIO_PULL_UP)>;
+			label = "LM_ENABLE";
+		};
+	};
 };
 
 &clk_hse {
