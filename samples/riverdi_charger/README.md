@@ -5,6 +5,11 @@ charge**, **Pause charge**, **Resume charge**, or **Reset** to control the
 bench session. The desktop truck simulator supplies SoC, voltage, current,
 temperature, warnings, and faults.
 
+Open **Direct control** to control power modules on a real SLH300 charger.
+Adjust the current setpoint in 100 mA steps and the fan PWM setpoint from
+0 to 100%, and view actual voltage, current, and temperature.
+A **Power module enable** checkbox is also available on this panel.
+
 The 1024 × 600 MIPI DSI panel, SDRAM framebuffer, and I²C touchscreen use the
 hardware configuration from the local `Riverdi70_Test` TouchGFX project.
 The display configuration is loaded by this sample's overlay.
