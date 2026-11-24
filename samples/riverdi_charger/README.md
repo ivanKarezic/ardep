@@ -201,3 +201,58 @@ checks the reported application version. MCUboot verifies the signature
 before activation. The app confirms the trial image after display and CAN
 initialization. Use this profile on an isolated bench CAN bus.
 [Vector vFlash](https://www.vector.com/en/product/vflash/)
+
+## Building for native_sim_64 board
+
+Run these commands from the workspace root. The 64-bit native target is
+selected with Zephyr's board qualifier:
+
+```bash
+./.venv/bin/west build -p always \
+  -b native_sim/native/64 \
+  -d build/riverdi_native \
+  ardep/samples/riverdi_charger
+```
+
+On Debian or Ubuntu, install the host SDL2 development package before the
+first build:
+
+```bash
+sudo apt install libsdl2-dev
+```
+
+The native build opens a 1024 x 600 SDL window and creates a simulated
+touchscreen. CAN is connected to the Linux `vcan0` virtual interface. Create
+and enable that interface before starting the application:
+
+```bash
+sudo modprobe vcan
+sudo ip link add dev vcan0 type vcan
+sudo ip link set vcan0 up
+```
+
+For real CAN interface (e.g. PCAN), connect your USB-CAN adapter and check which identifier has been assigned to it:
+
+```bash
+sudo ip link list
+```
+
+Then, configure and enable that interface before starting the application:
+
+```bash
+sudo ip link set can0 type can bitrate 500000
+sudo ip link set can0 up
+```
+
+Note: Make sure to change the `host-interface` property in `native_sim_64.overlay` to `host-interface = "can0";` and rebuild the application if you want to use a real CAN interface!
+
+
+To run the application, execute the binary directly:
+
+```bash
+./build/riverdi_native/zephyr/zephyr.exe
+```
+
+Use `Ctrl+C` to stop the native simulator. The simulator output is written
+to the terminal. With `vcan0` running, a SocketCAN or ISO-TP desktop client
+can communicate with the sample over the same 500 kbit/s CAN bus.
