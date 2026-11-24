@@ -1,5 +1,8 @@
 #include "pm_control.h"
+#include "gui.h"
 
+#include <stdbool.h>
+#include <stdint.h>
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
@@ -179,23 +182,43 @@ static void pm_control_sync_transmit_work_handler(struct k_work *work)
 static void pm_control_pdo_transmit_work_handler(struct k_work *work)
 {
     int err;
-    uint32_t current_setpoint_100mA = 20; // Current setpoint in 100mA units
-    uint32_t fan_pwm_setpoint_pct = 50; // Fan PWM setpoint in percentage
+    uint16_t current_setpoint_100mA = 0u; // Current setpoint in 100mA units
+    uint16_t fan_pwm_setpoint_pct = 0u; // Fan PWM setpoint in percentage
+    bool power_module_enable = false;
     struct can_frame pdo_frame = {
         .id = 0x20A, // PDO message ID for node ID 10
         .dlc = 8,
         .data = {0} // Zero-initialize
     };
 
+    power_module_enable = gui_get_power_module_enable();
+    if(!power_module_enable) {
+        // If power module is disabled, set current and fan PWM to 0
+        current_setpoint_100mA = 0u;
+        fan_pwm_setpoint_pct = 0u;
+
+        // Set LM_enable to low (disable power modules)
+        gpio_pin_set_dt(&pm_control_config.enable_gpio, 0); 
+    } else {
+        // Get the current setpoint and fan PWM setpoint from the GUI
+        // Divide by number of power modules to get per-module setpoint
+        current_setpoint_100mA = gui_get_current_setpoint_100ma() / CONFIG_PM_CONTROL_NUM_POWER_MODULES;
+        fan_pwm_setpoint_pct = gui_get_fan_pwm_setpoint_pct();
+
+        // Set LM_enable to high (enable power modules)
+        gpio_pin_set_dt(&pm_control_config.enable_gpio, 1); 
+
+    }
+
+    // Fill PDO frame with data and send it to each power module
     for(int i = 0; i < CONFIG_PM_CONTROL_NUM_POWER_MODULES; i++) {
 
         pdo_frame.id += i; // Set the PDO message ID for each power module
 
-        // TODO populate the PDO data with actual values from GUI
-        pdo_frame.data[0] = (current_setpoint_100mA) && 0xFFu;
-        pdo_frame.data[1] = (current_setpoint_100mA >> 8) && 0xFFu;
-        pdo_frame.data[2] = (fan_pwm_setpoint_pct) && 0xFFu;
-        pdo_frame.data[3] = (fan_pwm_setpoint_pct >> 8) && 0xFFu;
+        pdo_frame.data[0] = (current_setpoint_100mA) & 0xFFu;
+        pdo_frame.data[1] = (current_setpoint_100mA >> 8) & 0xFFu;
+        pdo_frame.data[2] = (fan_pwm_setpoint_pct) & 0xFFu;
+        pdo_frame.data[3] = (fan_pwm_setpoint_pct >> 8) & 0xFFu;
         pdo_frame.data[4] = 0u;
         pdo_frame.data[5] = 0u;
         pdo_frame.data[6] = 0u;
@@ -238,7 +261,21 @@ static void pm_control_can_rx_callback_pdo_all_pms(const struct device *dev, str
 {
     int pm_index = (int)(uintptr_t)user_data; // Power module index (1-based)
 
-    LOG_INF("Received PDO message from power module %d: ID=0x%03X, DLC=%d", pm_index, frame->id, frame->dlc);
+    uint16_t actual_current_100mA = ((uint16_t) frame->data[0]) | ((uint16_t) frame->data[1] << 8);
+    uint16_t actual_voltage_10mV = ((uint16_t) frame->data[2]) | ((uint16_t) frame->data[3] << 8);
+    int8_t actual_temperature_2C = (int8_t) frame->data[4];
+    uint16_t status_bitfield = ((uint16_t) frame->data[5]) | ((uint16_t) frame->data[6] << 8);
+
+    LOG_DBG("Received PDO message from power module %d: ID=0x%03X, DLC=%d", pm_index, frame->id, frame->dlc);
+
+    // Display the received values on the GUI for power module 1 only (for demonstration purposes)
+    if(pm_index == 1)
+    {
+        gui_set_actual_current_100ma(actual_current_100mA);
+        gui_set_actual_voltage_10mv(actual_voltage_10mV);
+        gui_set_actual_temperature_2c(actual_temperature_2C);
+        gui_set_status_bitfield(status_bitfield);
+    }
 }
 
 

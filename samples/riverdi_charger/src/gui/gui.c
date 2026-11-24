@@ -5,6 +5,7 @@
 #include <lvgl.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/kernel.h>
+#include <zephyr/sys/atomic.h>
 #include <zephyr/sys/printk.h>
 #include "gui.h"
 #include "charger_uds.h"
@@ -87,7 +88,29 @@ static struct {
 	lv_obj_t *voltage;
 	lv_obj_t *current;
 	lv_obj_t *temperature;
+	uint16_t displayed_voltage_10mv;
+	uint16_t displayed_current_100ma;
+	int8_t displayed_temperature_2c;
+	uint8_t displayed_actuals;
 } direct_control;
+
+static struct {
+	uint16_t displayed;
+	lv_obj_t *value;
+} power_module_status;
+
+static atomic_t status_bitfield;
+static atomic_t power_module_enabled;
+static atomic_t current_setpoint_100ma;
+static atomic_t fan_pwm_setpoint_pct;
+static atomic_t actual_voltage_10mv;
+static atomic_t actual_current_100ma;
+static atomic_t actual_temperature_2c;
+static atomic_t actual_values_valid;
+
+#define ACTUAL_VOLTAGE_VALID BIT(0)
+#define ACTUAL_CURRENT_VALID BIT(1)
+#define ACTUAL_TEMPERATURE_VALID BIT(2)
 
 /* Lay out both displays from the same 1024 x 600 design coordinates. */
 #define LCD_WIDTH DT_PROP(DT_CHOSEN(zephyr_display), width)
@@ -210,25 +233,12 @@ static void update_display(void)
 				      sample->temperature_decicelsius < 0 ? "-" : "",
 				      abs(sample->temperature_decicelsius) / 10,
 				      abs(sample->temperature_decicelsius) % 10);
-		lv_label_set_text_fmt(direct_control.voltage, "%u.%u V",
-				      sample->voltage_decivolts / 10, sample->voltage_decivolts % 10);
-		lv_label_set_text_fmt(direct_control.current, "%s%d.%d A",
-				      sample->current_deciamps < 0 ? "-" : "",
-				      abs(sample->current_deciamps) / 10,
-				      abs(sample->current_deciamps) % 10);
-		lv_label_set_text_fmt(direct_control.temperature, "%s%d.%d C",
-				      sample->temperature_decicelsius < 0 ? "-" : "",
-				      abs(sample->temperature_decicelsius) / 10,
-				      abs(sample->temperature_decicelsius) % 10);
 		return;
 	}
 	lv_label_set_text(charger.source_label, truck_connected ? "Waiting for battery data" : "");
 	lv_label_set_text(charger.voltage, "--");
 	lv_label_set_text(charger.current, "--");
 	lv_label_set_text(charger.remaining, "--");
-	lv_label_set_text(direct_control.voltage, "--");
-	lv_label_set_text(direct_control.current, "--");
-	lv_label_set_text(direct_control.temperature, "--");
 }
 
 static void toggle_charge(lv_event_t *event)
@@ -375,17 +385,35 @@ static void show_direct_control(lv_event_t *event)
 static void decrement_current_setpoint(lv_event_t *event)
 {
 	lv_spinbox_decrement(direct_control.current_setpoint);
+	atomic_set(&current_setpoint_100ma,
+		   lv_spinbox_get_value(direct_control.current_setpoint));
 }
 
 static void increment_current_setpoint(lv_event_t *event)
 {
 	lv_spinbox_increment(direct_control.current_setpoint);
+	atomic_set(&current_setpoint_100ma,
+		   lv_spinbox_get_value(direct_control.current_setpoint));
+}
+
+static void update_current_setpoint(lv_event_t *event)
+{
+	atomic_set(&current_setpoint_100ma,
+		   lv_spinbox_get_value(lv_event_get_target(event)));
+}
+
+static void update_power_module_enable(lv_event_t *event)
+{
+	atomic_set(&power_module_enabled,
+		   lv_obj_has_state(lv_event_get_target(event), LV_STATE_CHECKED));
 }
 
 static void update_fan_setpoint(lv_event_t *event)
 {
-	lv_label_set_text_fmt(direct_control.fan_value, "%d%%",
-			      lv_slider_get_value(lv_event_get_target(event)));
+	const int32_t value = lv_slider_get_value(lv_event_get_target(event));
+
+	lv_label_set_text_fmt(direct_control.fan_value, "%d%%", value);
+	atomic_set(&fan_pwm_setpoint_pct, value);
 }
 
 static void update_alerts(uint16_t warnings, uint16_t errors)
@@ -403,16 +431,58 @@ static void update_alerts(uint16_t warnings, uint16_t errors)
 	update_alert_overlay();
 }
 
+static void update_actual_values(void)
+{
+	uint8_t valid = (uint8_t)atomic_get(&actual_values_valid);
+
+	if ((valid & ACTUAL_VOLTAGE_VALID) &&
+	    (!(direct_control.displayed_actuals & ACTUAL_VOLTAGE_VALID) ||
+	     direct_control.displayed_voltage_10mv != atomic_get(&actual_voltage_10mv))) {
+		uint16_t voltage = (uint16_t)atomic_get(&actual_voltage_10mv);
+
+		lv_label_set_text_fmt(direct_control.voltage, "%u.%02u V",
+				      voltage / 100u, voltage % 100u);
+		direct_control.displayed_voltage_10mv = voltage;
+		direct_control.displayed_actuals |= ACTUAL_VOLTAGE_VALID;
+	}
+	if ((valid & ACTUAL_CURRENT_VALID) &&
+	    (!(direct_control.displayed_actuals & ACTUAL_CURRENT_VALID) ||
+	     direct_control.displayed_current_100ma != atomic_get(&actual_current_100ma))) {
+		uint16_t current = (uint16_t)atomic_get(&actual_current_100ma);
+
+		lv_label_set_text_fmt(direct_control.current, "%u.%u A",
+				      current / 10u, current % 10u);
+		direct_control.displayed_current_100ma = current;
+		direct_control.displayed_actuals |= ACTUAL_CURRENT_VALID;
+	}
+	if ((valid & ACTUAL_TEMPERATURE_VALID) &&
+	    (!(direct_control.displayed_actuals & ACTUAL_TEMPERATURE_VALID) ||
+	     direct_control.displayed_temperature_2c != atomic_get(&actual_temperature_2c))) {
+		int8_t temperature = (int8_t)atomic_get(&actual_temperature_2c);
+
+		lv_label_set_text_fmt(direct_control.temperature, "%d C", temperature * 2);
+		direct_control.displayed_temperature_2c = temperature;
+		direct_control.displayed_actuals |= ACTUAL_TEMPERATURE_VALID;
+	}
+}
+
 static void refresh_can(lv_timer_t *timer)
 {
 	static enum charger_truck displayed_truck;
 	static enum charger_charge_state displayed_charge_state;
 	static uint8_t displayed_indicators;
+	const uint16_t status = (uint16_t)atomic_get(&status_bitfield);
 	struct battery_sample sample;
 	const enum charger_truck truck = charger_uds_truck();
 	const uint8_t indicators = charger_uds_indicators();
 	const enum charger_charge_state charge_state = charger_charge_state();
 	bool changed = charge_state != displayed_charge_state;
+
+	if (status != power_module_status.displayed) {
+		lv_label_set_text_fmt(power_module_status.value, "0x%04X", (unsigned int)status);
+		power_module_status.displayed = status;
+	}
+	update_actual_values();
 
 	displayed_charge_state = charge_state;
 	if (indicators != displayed_indicators) {
@@ -495,10 +565,19 @@ static void create_direct_control_page(lv_obj_t *screen)
 {
 	lv_obj_t *card;
 	lv_obj_t *power_module_enable;
+	lv_obj_t *status_card;
 
 	direct_control.page = panel(screen, 0, 84, 1024, 516, SURFACE, 0);
 	label(direct_control.page, "Direct control", 30, 18, FONT_MEDIUM, INK);
 	button(direct_control.page, "Dashboard", 780, 14, 214, false, show_dashboard);
+	power_module_enable = lv_checkbox_create(direct_control.page);
+	lv_checkbox_set_text(power_module_enable, "Power module enable");
+	lv_obj_set_pos(power_module_enable, layout_x(30), layout_y(58));
+	lv_obj_set_style_text_font(power_module_enable, FONT_SMALL, 0);
+	lv_obj_set_style_text_color(power_module_enable, lv_color_hex(INK), 0);
+	lv_obj_add_event_cb(power_module_enable, update_power_module_enable,
+			    LV_EVENT_VALUE_CHANGED, NULL);
+	atomic_set(&power_module_enabled, 0);
 
 	card = panel(direct_control.page, 30, 96, 464, 178, WHITE, 12);
 	label(card, "Current setpoint", 20, 15, FONT_SMALL, INK);
@@ -507,10 +586,14 @@ static void create_direct_control_page(lv_obj_t *screen)
 	lv_spinbox_set_range(direct_control.current_setpoint, 0, 1000);
 	lv_spinbox_set_digit_format(direct_control.current_setpoint, 4, 0);
 	lv_spinbox_set_step(direct_control.current_setpoint, 1);
+	lv_spinbox_set_value(direct_control.current_setpoint, 0);
 	lv_obj_set_pos(direct_control.current_setpoint, layout_x(20), layout_y(94));
 	lv_obj_set_size(direct_control.current_setpoint, layout_x(248), layout_y(60));
 	lv_obj_set_style_text_font(direct_control.current_setpoint, FONT_MEDIUM, 0);
 	lv_obj_set_style_text_color(direct_control.current_setpoint, lv_color_hex(INK), 0);
+	lv_obj_add_event_cb(direct_control.current_setpoint, update_current_setpoint,
+			    LV_EVENT_VALUE_CHANGED, NULL);
+	atomic_set(&current_setpoint_100ma, 0);
 	button(card, "-", 294, 94, 60, false, decrement_current_setpoint);
 	button(card, "+", 374, 94, 60, true, increment_current_setpoint);
 
@@ -526,21 +609,22 @@ static void create_direct_control_page(lv_obj_t *screen)
 	lv_obj_set_style_bg_color(direct_control.fan_setpoint, lv_color_hex(LINE), LV_PART_MAIN);
 	lv_obj_set_style_bg_color(direct_control.fan_setpoint, lv_color_hex(YELLOW),
 				  LV_PART_INDICATOR);
-	//lv_obj_set_style_width(direct_control.fan_setpoint, 8, LV_PART_MAIN);
 	lv_obj_set_style_height(direct_control.fan_setpoint, 20, LV_PART_MAIN);
 	lv_obj_set_style_bg_color(direct_control.fan_setpoint, lv_color_hex(INK), LV_PART_KNOB);
 	lv_obj_add_event_cb(direct_control.fan_setpoint, update_fan_setpoint,
 			    LV_EVENT_VALUE_CHANGED, NULL);
+	atomic_set(&fan_pwm_setpoint_pct, 0);
 
-	power_module_enable = lv_checkbox_create(direct_control.page);
-	lv_checkbox_set_text(power_module_enable, "Power module enable");
-	lv_obj_set_pos(power_module_enable, layout_x(30), layout_y(310));
-	lv_obj_set_style_text_font(power_module_enable, FONT_SMALL, 0);
-	lv_obj_set_style_text_color(power_module_enable, lv_color_hex(INK), 0);
+	status_card = panel(direct_control.page, 30, 300, 964, 64, WHITE, 12);
+	label(status_card, "Power module status:", 18, 8, FONT_SMALL, MUTED);
+	power_module_status.value = label(status_card, "0x0000", 280, 8, FONT_SMALL, INK);
 
 	direct_control.voltage = metric(direct_control.page, 30, "Actual voltage");
 	direct_control.current = metric(direct_control.page, 357, "Actual current");
 	direct_control.temperature = metric(direct_control.page, 684, "Actual temperature");
+	lv_label_set_text(direct_control.voltage, "--");
+	lv_label_set_text(direct_control.current, "--");
+	lv_label_set_text(direct_control.temperature, "--");
 }
 
 void gui_init(void)
@@ -601,6 +685,44 @@ void gui_init(void)
 	lv_obj_add_flag(direct_control.page, LV_OBJ_FLAG_HIDDEN);
 	update_display();
 	lv_timer_create(refresh_can, 40, NULL);
+}
+
+bool gui_get_power_module_enable(void)
+{
+	return atomic_get(&power_module_enabled) != 0;
+}
+
+uint16_t gui_get_current_setpoint_100ma(void)
+{
+	return (uint16_t)atomic_get(&current_setpoint_100ma);
+}
+
+uint16_t gui_get_fan_pwm_setpoint_pct(void)
+{
+	return (uint16_t)atomic_get(&fan_pwm_setpoint_pct);
+}
+
+void gui_set_actual_voltage_10mv(uint16_t voltage_10mv)
+{
+	atomic_set(&actual_voltage_10mv, voltage_10mv);
+	atomic_or(&actual_values_valid, ACTUAL_VOLTAGE_VALID);
+}
+
+void gui_set_actual_current_100ma(uint16_t current_100ma)
+{
+	atomic_set(&actual_current_100ma, current_100ma);
+	atomic_or(&actual_values_valid, ACTUAL_CURRENT_VALID);
+}
+
+void gui_set_actual_temperature_2c(int8_t temperature_2c)
+{
+	atomic_set(&actual_temperature_2c, temperature_2c);
+	atomic_or(&actual_values_valid, ACTUAL_TEMPERATURE_VALID);
+}
+
+void gui_set_status_bitfield(uint16_t status)
+{
+	atomic_set(&status_bitfield, status);
 }
 
 uint32_t gui_process(void)
