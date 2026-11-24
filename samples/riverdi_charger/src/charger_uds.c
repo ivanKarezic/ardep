@@ -20,6 +20,7 @@
 #define DID_TRUCK 0xf202
 #define DID_INDICATORS 0xf203
 #define DID_CHARGE 0xf204
+#define DID_LAYOUT 0xf205
 #define DID_VERSION 0xf189
 #define BATTERY_WIRE_SIZE 12
 #define BENCH_P2_MS 5
@@ -109,6 +110,13 @@ static UDSErr_t read_did(UDSServer_t *srv, UDSRDBIArgs_t *args)
 		return args->copy(srv, wire, 1);
 	case DID_CHARGE:
 		wire[0] = charger_charge_state();
+		return args->copy(srv, wire, 1);
+	case DID_LAYOUT:
+#ifdef CONFIG_BOARD_STM32F769I_DISCO
+		wire[0] = 1;
+#else
+		wire[0] = 0;
+#endif
 		return args->copy(srv, wire, 1);
 	case DID_BATTERY:
 		charger_uds_sample(&sample);

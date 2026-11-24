@@ -63,6 +63,70 @@ use a terminated 500 kbit/s bus.
 [MB1370-LCD-B02 schematic](https://www.st.com/resource/en/schematic_pack/mb1370-lcd-b02-schematic.pdf) ·
 [STM32H7B3I-EVAL BSP](https://github.com/STMicroelectronics/stm32h7b3i-eval-bsp)
 
+## STM32F769I-DISCO with B-LCD40-DSI1
+
+Build the application for the STM32F769I Discovery board and the on-board
+800 x 480 DSI LCD:
+
+```bash
+west build -p always -b stm32f769i_disco -d build/riverdi_f769 ardep/samples/riverdi_charger
+```
+
+The build uses the `st_b_lcd40_dsi1_mb1166` shield and CAN1 at 500 kbit/s.
+Use CAN1 pins PB8 (RX) and PB9 (TX), connected to a 3.3 V-compatible CAN
+transceiver. I2C1 is disabled because it uses the same pins; the LCD touch
+controller uses I2C4.
+The F769 MCUboot layout uses a 256 KiB bootloader, 768 KiB per image slot,
+and a 256 KiB scratch partition, filling the 2 MiB internal flash.
+
+From the west workspace root, create and retain a private ECDSA P-256
+development key, then export its public key for the desktop tool:
+
+```bash
+. .venv/bin/activate
+imgtool keygen -k ardep/samples/riverdi_charger/build/f769_dev.pem -t ecdsa-p256
+imgtool getpub -e pem -k ardep/samples/riverdi_charger/build/f769_dev.pem -o ardep/samples/riverdi_charger/build/f769_dev_public.pem
+```
+
+Create the ignored local key configuration with the absolute path:
+
+```bash
+printf 'SB_CONFIG_BOOT_SIGNATURE_KEY_FILE="%s"\n' \
+  "$(realpath ardep/samples/riverdi_charger/build/f769_dev.pem)" \
+  > ardep/samples/riverdi_charger/build/f769_signing_key.conf
+```
+
+Build using both the tracked MCUboot settings and the local key setting:
+
+```bash
+west build --sysbuild -p always -b stm32f769i_disco \
+  -d ardep/samples/riverdi_charger/build/riverdi_f769_mcuboot \
+  ardep/samples/riverdi_charger -- \
+  '-DSB_CONF_FILE=ardep/samples/riverdi_charger/sysbuild/f769_mcuboot.conf ardep/samples/riverdi_charger/build/f769_signing_key.conf' \
+  '-DSHIELD=st_b_lcd40_dsi1_mb1166' \
+  '-Driverdi_charger_EXTRA_CONF_FILE=ota.conf'
+```
+
+The private key must not be committed. Back it up securely; without it, future
+firmware updates cannot be signed for this bootloader. Select
+`ardep/samples/riverdi_charger/build/f769_dev_public.pem` in the desktop tool.
+Provision MCUboot and the initial signed application over SWD. Mass erase
+before the first flash after changing the partition layout:
+
+```bash
+west flash -d ardep/samples/riverdi_charger/build/riverdi_f769_mcuboot \
+  --domain mcuboot -r jlink --erase
+west flash -d ardep/samples/riverdi_charger/build/riverdi_f769_mcuboot \
+  --domain riverdi_charger -r jlink --no-erase
+```
+
+Configure the desktop CAN interface for 500 kbit/s, 11-bit ISO-TP, request
+ID `0x7E0`, and response ID `0x7E8`. Connect PB9 (CAN1_TX) and PB8
+(CAN1_RX) to a 3.3 V-compatible CAN transceiver, then connect its CAN-H,
+CAN-L, and GND to the PC's USB-CAN adapter. The Discovery board has no
+on-board CAN transceiver. DID F205 reports the flash layout: 0 is the legacy
+Riverdi layout and 1 is the STM32F769I-DISCO layout.
+
 ## CAN and desktop console
 
 Connect the desktop adapter to **CAN1 (P11)** using pin 1 for GND, pin 2
@@ -90,6 +154,7 @@ values only.
 | F202 | Read and write | One byte. 0 disconnects, 1 selects EJC 216, 2 EFG 216, 3 ETV 216i, 4 EFG 425, and 5 Custom. |
 | F203 | Read and write | Read one byte of simulated indicator states. Bit 0 is Power stage and bit 1 is PM Enable. Write two bytes, a change mask and new values for the masked bits. Both LEDs start off after reset. |
 | F204 | Read and write | Read one byte (0 ready, 1 charging, 2 paused, 3 complete). Write 1 to start or resume, 0 to pause. The target rejects Start without a selected truck and ends the session when the truck changes or disconnects. |
+| F205 | Read | One byte. 0 is the legacy Riverdi flash layout; 1 is STM32F769I-DISCO with the 256/768/768/256 KiB layout. |
 
 The dashboard shows the simulated truck selected in Charger Tool. Incoming
 warning and error bits open an overlay. Acknowledge it by touch or open
@@ -136,3 +201,58 @@ checks the reported application version. MCUboot verifies the signature
 before activation. The app confirms the trial image after display and CAN
 initialization. Use this profile on an isolated bench CAN bus.
 [Vector vFlash](https://www.vector.com/en/product/vflash/)
+
+## Building for native_sim_64 board
+
+Run these commands from the workspace root. The 64-bit native target is
+selected with Zephyr's board qualifier:
+
+```bash
+./.venv/bin/west build -p always \
+  -b native_sim/native/64 \
+  -d build/riverdi_native \
+  ardep/samples/riverdi_charger
+```
+
+On Debian or Ubuntu, install the host SDL2 development package before the
+first build:
+
+```bash
+sudo apt install libsdl2-dev
+```
+
+The native build opens a 1024 x 600 SDL window and creates a simulated
+touchscreen. CAN is connected to the Linux `vcan0` virtual interface. Create
+and enable that interface before starting the application:
+
+```bash
+sudo modprobe vcan
+sudo ip link add dev vcan0 type vcan
+sudo ip link set vcan0 up
+```
+
+For real CAN interface (e.g. PCAN), connect your USB-CAN adapter and check which identifier has been assigned to it:
+
+```bash
+sudo ip link list
+```
+
+Then, configure and enable that interface before starting the application:
+
+```bash
+sudo ip link set can0 type can bitrate 500000
+sudo ip link set can0 up
+```
+
+Note: Make sure to change the `host-interface` property in `native_sim_64.overlay` to `host-interface = "can0";` and rebuild the application if you want to use a real CAN interface!
+
+
+To run the application, execute the binary directly:
+
+```bash
+./build/riverdi_native/zephyr/zephyr.exe
+```
+
+Use `Ctrl+C` to stop the native simulator. The simulator output is written
+to the terminal. With `vcan0` running, a SocketCAN or ISO-TP desktop client
+can communicate with the sample over the same 500 kbit/s CAN bus.

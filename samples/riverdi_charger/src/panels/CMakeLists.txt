@@ -1,0 +1,5 @@
+target_include_directories(app PRIVATE .)
+target_sources_ifdef(CONFIG_BOARD_RIVERDI_70STM32H7 app PRIVATE panel_riverdi_70stm32h7.c)
+target_sources_ifdef(CONFIG_BOARD_STM32H7B3I_EVAL app PRIVATE panel_stm32h7b3i_eval.c)
+target_sources_ifdef(CONFIG_BOARD_STM32F769I_DISCO app PRIVATE panel_stm32f769i_disco.c)
+target_sources_ifdef(CONFIG_BOARD_NATIVE_SIM app PRIVATE panel_native_sim.c)
