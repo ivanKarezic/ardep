@@ -73,25 +73,59 @@ west build -p always -b stm32f769i_disco -d build/riverdi_f769 ardep/samples/riv
 ```
 
 The build uses the `st_b_lcd40_dsi1_mb1166` shield and CAN1 at 500 kbit/s.
-Use CAN1 pins PB8 (RX) and PB9 (TX).
+Use CAN1 pins PB8 (RX) and PB9 (TX), connected to a 3.3 V-compatible CAN
+transceiver. I2C1 is disabled because it uses the same pins; the LCD touch
+controller uses I2C4.
 The F769 MCUboot layout uses a 256 KiB bootloader, 768 KiB per image slot,
 and a 256 KiB scratch partition, filling the 2 MiB internal flash.
 
-For an unsigned MCUboot build with the scratch swap layout:
+From the west workspace root, create and retain a private ECDSA P-256
+development key, then export its public key for the desktop tool:
+
+```bash
+. .venv/bin/activate
+imgtool keygen -k ardep/samples/riverdi_charger/build/f769_dev.pem -t ecdsa-p256
+imgtool getpub -e pem -k ardep/samples/riverdi_charger/build/f769_dev.pem -o ardep/samples/riverdi_charger/build/f769_dev_public.pem
+```
+
+Create the ignored local key configuration with the absolute path:
+
+```bash
+printf 'SB_CONFIG_BOOT_SIGNATURE_KEY_FILE="%s"\n' \
+  "$(realpath ardep/samples/riverdi_charger/build/f769_dev.pem)" \
+  > ardep/samples/riverdi_charger/build/f769_signing_key.conf
+```
+
+Build using both the tracked MCUboot settings and the local key setting:
 
 ```bash
 west build --sysbuild -p always -b stm32f769i_disco \
-  -d build/riverdi_f769_mcuboot ardep/samples/riverdi_charger \
-  -- "-DSB_CONF_FILE=/absolute/path/to/ardep/samples/riverdi_charger/sysbuild/f769_mcuboot.conf" \
-     "-DSHIELD=st_b_lcd40_dsi1_mb1166" \
-     "-Driverdi_charger_EXTRA_CONF_FILE=ota.conf"
+  -d ardep/samples/riverdi_charger/build/riverdi_f769_mcuboot \
+  ardep/samples/riverdi_charger -- \
+  '-DSB_CONF_FILE=ardep/samples/riverdi_charger/sysbuild/f769_mcuboot.conf ardep/samples/riverdi_charger/build/f769_signing_key.conf' \
+  '-DSHIELD=st_b_lcd40_dsi1_mb1166' \
+  '-Driverdi_charger_EXTRA_CONF_FILE=ota.conf'
 ```
 
-Flash the unsigned MCUboot build with J-Link after connecting the board:
+The private key must not be committed. Back it up securely; without it, future
+firmware updates cannot be signed for this bootloader. Select
+`ardep/samples/riverdi_charger/build/f769_dev_public.pem` in the desktop tool.
+Provision MCUboot and the initial signed application over SWD. Mass erase
+before the first flash after changing the partition layout:
 
 ```bash
-west flash -d build/riverdi_f769_mcuboot -r jlink --no-erase
+west flash -d ardep/samples/riverdi_charger/build/riverdi_f769_mcuboot \
+  --domain mcuboot -r jlink --erase
+west flash -d ardep/samples/riverdi_charger/build/riverdi_f769_mcuboot \
+  --domain riverdi_charger -r jlink --no-erase
 ```
+
+Configure the desktop CAN interface for 500 kbit/s, 11-bit ISO-TP, request
+ID `0x7E0`, and response ID `0x7E8`. Connect PB9 (CAN1_TX) and PB8
+(CAN1_RX) to a 3.3 V-compatible CAN transceiver, then connect its CAN-H,
+CAN-L, and GND to the PC's USB-CAN adapter. The Discovery board has no
+on-board CAN transceiver. DID F205 reports the flash layout: 0 is the legacy
+Riverdi layout and 1 is the STM32F769I-DISCO layout.
 
 ## CAN and desktop console
 
@@ -120,6 +154,7 @@ values only.
 | F202 | Read and write | One byte. 0 disconnects, 1 selects EJC 216, 2 EFG 216, 3 ETV 216i, 4 EFG 425, and 5 Custom. |
 | F203 | Read and write | Read one byte of simulated indicator states. Bit 0 is Power stage and bit 1 is PM Enable. Write two bytes, a change mask and new values for the masked bits. Both LEDs start off after reset. |
 | F204 | Read and write | Read one byte (0 ready, 1 charging, 2 paused, 3 complete). Write 1 to start or resume, 0 to pause. The target rejects Start without a selected truck and ends the session when the truck changes or disconnects. |
+| F205 | Read | One byte. 0 is the legacy Riverdi flash layout; 1 is STM32F769I-DISCO with the 256/768/768/256 KiB layout. |
 
 The dashboard shows the simulated truck selected in Charger Tool. Incoming
 warning and error bits open an overlay. Acknowledge it by touch or open

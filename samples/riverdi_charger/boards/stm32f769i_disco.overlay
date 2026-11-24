@@ -17,3 +17,7 @@
 	bitrate = <500000>;
 	status = "okay";
 };
+
+&i2c1 {
+	status = "disabled";
+};
