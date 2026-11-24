@@ -1,0 +1,19 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+
+#include "stm32f769i_disco_flash_layout.dtsi"
+
+/delete-node/ &{/soc/spi@a0001000/qspi-nor-flash@0/partitions/partition@0};
+
+/ {
+	chosen {
+		zephyr,canbus = &can1;
+		zephyr,code-partition = &slot0_partition;
+	};
+};
+
+&can1 {
+	pinctrl-0 = <&can1_rx_pb8 &can1_tx_pb9>;
+	pinctrl-names = "default";
+	bitrate = <500000>;
+	status = "okay";
+};

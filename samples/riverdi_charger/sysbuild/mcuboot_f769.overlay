@@ -1,0 +1,11 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+
+#include "../boards/stm32f769i_disco_flash_layout.dtsi"
+
+/delete-node/ &{/soc/spi@a0001000/qspi-nor-flash@0/partitions/partition@0};
+
+/ {
+	chosen {
+		zephyr,code-partition = &boot_partition;
+	};
+};

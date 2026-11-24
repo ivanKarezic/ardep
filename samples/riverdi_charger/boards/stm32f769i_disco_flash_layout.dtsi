@@ -1,0 +1,32 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+
+&flash0 {
+	reg = <0x08000000 DT_SIZE_M(2)>;
+	/delete-property/ bank2-flash-size;
+
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		boot_partition: partition@0 {
+			label = "mcuboot";
+			reg = <0x000000 0x040000>;
+		};
+
+		slot0_partition: partition@40000 {
+			label = "image-0";
+			reg = <0x040000 0x0c0000>;
+		};
+
+		slot1_partition: partition@100000 {
+			label = "image-1";
+			reg = <0x100000 0x0c0000>;
+		};
+
+		scratch_partition: partition@1c0000 {
+			label = "image-scratch";
+			reg = <0x1c0000 0x040000>;
+		};
+	};
+};

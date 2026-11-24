@@ -63,6 +63,36 @@ use a terminated 500 kbit/s bus.
 [MB1370-LCD-B02 schematic](https://www.st.com/resource/en/schematic_pack/mb1370-lcd-b02-schematic.pdf) ·
 [STM32H7B3I-EVAL BSP](https://github.com/STMicroelectronics/stm32h7b3i-eval-bsp)
 
+## STM32F769I-DISCO with B-LCD40-DSI1
+
+Build the application for the STM32F769I Discovery board and the on-board
+800 x 480 DSI LCD:
+
+```bash
+west build -p always -b stm32f769i_disco -d build/riverdi_f769 ardep/samples/riverdi_charger
+```
+
+The build uses the `st_b_lcd40_dsi1_mb1166` shield and CAN1 at 500 kbit/s.
+Use CAN1 pins PB8 (RX) and PB9 (TX).
+The F769 MCUboot layout uses a 256 KiB bootloader, 768 KiB per image slot,
+and a 256 KiB scratch partition, filling the 2 MiB internal flash.
+
+For an unsigned MCUboot build with the scratch swap layout:
+
+```bash
+west build --sysbuild -p always -b stm32f769i_disco \
+  -d build/riverdi_f769_mcuboot ardep/samples/riverdi_charger \
+  -- "-DSB_CONF_FILE=/absolute/path/to/ardep/samples/riverdi_charger/sysbuild/f769_mcuboot.conf" \
+     "-DSHIELD=st_b_lcd40_dsi1_mb1166" \
+     "-Driverdi_charger_EXTRA_CONF_FILE=ota.conf"
+```
+
+Flash the unsigned MCUboot build with J-Link after connecting the board:
+
+```bash
+west flash -d build/riverdi_f769_mcuboot -r jlink --no-erase
+```
+
 ## CAN and desktop console
 
 Connect the desktop adapter to **CAN1 (P11)** using pin 1 for GND, pin 2
