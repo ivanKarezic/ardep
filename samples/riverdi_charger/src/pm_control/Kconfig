@@ -12,13 +12,13 @@ config PM_CONTROL_INIT_PRIORITY
 
 config PM_CONTROL_NUM_POWER_MODULES
     int "Number of power modules"
-    default 2
+    default 1
     help
       Number of power modules to control.
 
 config PM_CONTROL_POWER_UP_DELAY_MS
     int "Power up delay in milliseconds"
-    default 500
+    default 3000
     help
       Delay after power up before starting the message transmit.
 
@@ -42,7 +42,7 @@ config PM_CONTROL_HB_PERIOD_MS
 
 config PM_CONTROL_SYNC_PERIOD_MS
     int "SYNC period in milliseconds"
-    default 20
+    default 10
     help
       Period with which the SYNC is sent.
 

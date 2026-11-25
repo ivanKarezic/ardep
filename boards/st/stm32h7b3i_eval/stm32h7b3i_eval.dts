@@ -125,7 +125,7 @@
 	pinctrl-names = "default";
 	clocks = <&rcc STM32_CLOCK(APB1_2, 8)>, <&rcc STM32_SRC_PLL1_Q FDCAN_SEL(1)>;
 	phys = <&can_phy>;
-	bitrate = <500000>;
+	bitrate = <800000>;
 	status = "okay";
 };
 

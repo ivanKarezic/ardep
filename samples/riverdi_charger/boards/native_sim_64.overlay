@@ -28,11 +28,11 @@
 };
 
 &can0 {
-        status = "okay";
+	status = "okay";
 	/* Virtual CAN interface */
-        host-interface = "vcan0";
+	host-interface = "vcan0";
 	/* For real CAN interface (e.g. PCAN_USB), comment out the above line and uncomment the following */
 	/* host-interface = "can0"; */
-        sample-point = <875>;
-        bitrate = <500000>;
+	sample-point = <875>;
+	bitrate = <800000>;
 };
