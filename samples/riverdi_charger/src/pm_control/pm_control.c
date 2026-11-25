@@ -187,7 +187,7 @@ static void pm_control_pdo_transmit_work_handler(struct k_work *work)
     bool power_module_enable = false;
     struct can_frame pdo_frame = {
         .id = 0x20A, // PDO message ID for node ID 10
-        .dlc = 8,
+        .dlc = 4,
         .data = {0} // Zero-initialize
     };
 
@@ -219,10 +219,6 @@ static void pm_control_pdo_transmit_work_handler(struct k_work *work)
         pdo_frame.data[1] = (current_setpoint_100mA >> 8) & 0xFFu;
         pdo_frame.data[2] = (fan_pwm_setpoint_pct) & 0xFFu;
         pdo_frame.data[3] = (fan_pwm_setpoint_pct >> 8) & 0xFFu;
-        pdo_frame.data[4] = 0u;
-        pdo_frame.data[5] = 0u;
-        pdo_frame.data[6] = 0u;
-        pdo_frame.data[7] = 0u;
 
         err = can_send(pm_control_config.can_dev, &pdo_frame, K_MSEC(CONFIG_PM_CONTROL_CAN_TRANSMIT_TIMEOUT_MS), pm_control_can_tx_callback, NULL);
         if (err < 0) {
