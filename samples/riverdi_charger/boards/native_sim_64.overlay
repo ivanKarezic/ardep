@@ -11,6 +11,14 @@
 		input = <&input_sdl_touch>;
 		display = <&sdl_dc>;
 	};
+
+	leds {
+		/* Not actually an LED, but used as a node from which to fetch gpio_dt_spec in application */
+		lm_enable: led_1 {
+			gpios = <&gpio0 1 GPIO_ACTIVE_HIGH>;
+			label = "LM_ENABLE";
+		};
+	};
 };
 
 &sdl_dc {

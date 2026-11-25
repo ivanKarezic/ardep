@@ -14,9 +14,8 @@ endif()
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(riverdi_charger)
 
-target_sources(app PRIVATE src/main.c src/charger_uds.c src/truck_art.c)
-add_subdirectory(src/panels)
-
+# Add subdirectories recursively
+add_subdirectory(src)
 
 generate_inc_file_for_target(app src/jungheinrich.rgb565
   ${ZEPHYR_BINARY_DIR}/include/generated/jungheinrich.rgb565.inc)

@@ -1,0 +1,49 @@
+menu "Power Module Control"
+
+module = PM_CONTROL
+module-str = pm_control
+source "subsys/logging/Kconfig.template.log_config"
+
+config PM_CONTROL_INIT_PRIORITY
+    int "Initialization priority"
+    default APPLICATION_INIT_PRIORITY
+    help
+      Initialization priority for the power module control.
+
+config PM_CONTROL_NUM_POWER_MODULES
+    int "Number of power modules"
+    default 2
+    help
+      Number of power modules to control.
+
+config PM_CONTROL_POWER_UP_DELAY_MS
+    int "Power up delay in milliseconds"
+    default 500
+    help
+      Delay after power up before starting the message transmit.
+
+config PM_CONTROL_CAN_TRANSMIT_TIMEOUT_MS
+    int "CAN transmit timeout in milliseconds"
+    default 100
+    help
+      Timeout for CAN message transmission.
+
+config PM_CONTROL_PDO_PERIOD_MS
+    int "PDO period in milliseconds"
+    default 10
+    help
+      Period with which the PDO is sent.
+
+config PM_CONTROL_HB_PERIOD_MS
+    int "Heartbeat period in milliseconds"
+    default 100
+    help
+      Period with which the heartbeat is sent.
+
+config PM_CONTROL_SYNC_PERIOD_MS
+    int "SYNC period in milliseconds"
+    default 20
+    help
+      Period with which the SYNC is sent.
+
+endmenu
