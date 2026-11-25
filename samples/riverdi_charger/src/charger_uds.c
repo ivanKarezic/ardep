@@ -5,6 +5,7 @@
 #include <zephyr/sys/atomic.h>
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/sys/reboot.h>
+#include <zephyr/sys/util.h>
 #include <zephyr/app_version.h>
 #include "charger_uds.h"
 
@@ -212,8 +213,11 @@ static UDSErr_t write_did(const UDSWDBIArgs_t *args)
 #define ERASE_SECONDARY 0xff00
 #define VERIFY_AND_STAGE 0xff01
 #define SECONDARY_ID PARTITION_ID(slot1_partition)
-/* Leave a complete sector after the image data for swap metadata. */
-#define MAX_IMAGE_SIZE (PARTITION_SIZE(slot1_partition) - 0x20000)
+/* The linker keeps CONFIG_ROM_END_OFFSET free at the end of the slot for
+ * the MCUboot trailer. That is smaller than one 128 KiB flash sector.
+ */
+BUILD_ASSERT(CONFIG_ROM_END_OFFSET > 0);
+#define MAX_IMAGE_SIZE (PARTITION_SIZE(slot1_partition) - CONFIG_ROM_END_OFFSET)
 #define TRANSFER_PAYLOAD 512
 
 BUILD_ASSERT(IS_ENABLED(CONFIG_MCUBOOT_BOOTLOADER_MODE_SWAP_SCRATCH),
