@@ -22,7 +22,7 @@
 &can1 {
 	pinctrl-0 = <&can1_rx_pb8 &can1_tx_pb9>;
 	pinctrl-names = "default";
-	bitrate = <500000>;
+	bitrate = <800000>;
 	status = "okay";
 };
 

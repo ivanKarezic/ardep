@@ -153,6 +153,6 @@
 	clocks = <&rcc STM32_CLOCK(APB1_2, 8)>, <&rcc STM32_SRC_PLL1_Q FDCAN_SEL(1)>;
 	pinctrl-0 = <&fdcan1_rx_pa11 &fdcan1_tx_pb9>;
 	pinctrl-names = "default";
-	bitrate = <500000>;
+	bitrate = <800000>;
 	status = "okay";
 };
