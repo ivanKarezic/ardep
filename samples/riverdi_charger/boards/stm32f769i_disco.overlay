@@ -8,6 +8,7 @@
 	chosen {
 		zephyr,canbus = &can1;
 		zephyr,code-partition = &slot0_partition;
+		zephyr,touch = &ft6202;
 	};
 
 	leds {
@@ -27,5 +28,14 @@
 };
 
 &i2c1 {
+	status = "disabled";
+};
+
+&ft6202 {
+	inverted-y;
+	screen-height = <480>;
+};
+
+&ft5336 {
 	status = "disabled";
 };
